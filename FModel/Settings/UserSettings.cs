@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using CUE4Parse.UE4.Assets.Exports.Material;
+using CUE4Parse.UE4.Assets.Exports.Nanite;
+using CUE4Parse.UE4.Versions;
 using CUE4Parse_Conversion;
 using CUE4Parse_Conversion.Animations;
-using CUE4Parse.UE4.Versions;
 using CUE4Parse_Conversion.Meshes;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse_Conversion.UEFormat.Enums;
-using CUE4Parse.UE4.Assets.Exports.Material;
 using FModel.Framework;
 using FModel.ViewModels;
 using FModel.ViewModels.ApiEndpoints.Models;
@@ -60,6 +61,7 @@ namespace FModel.Settings
         {
             LodFormat = Default.LodExportFormat,
             MeshFormat = Default.MeshExportFormat,
+            NaniteMeshFormat = Default.NaniteMeshExportFormat,
             AnimFormat = Default.MeshExportFormat switch
             {
                 EMeshFormat.UEFormat => EAnimFormat.UEFormat,
@@ -71,7 +73,8 @@ namespace FModel.Settings
             CompressionFormat = Default.CompressionFormat,
             Platform = Default.CurrentDir.TexturePlatform,
             ExportMorphTargets = Default.SaveMorphTargets,
-            ExportMaterials = Default.SaveEmbeddedMaterials
+            ExportMaterials = Default.SaveEmbeddedMaterials,
+            ExportHdrTexturesAsHdr = Default.SaveHdrTexturesAsHdr
         };
 
         private bool _showChangelog = true;
@@ -137,13 +140,6 @@ namespace FModel.Settings
             set => SetProperty(ref _lastOpenedSettingTab, value);
         }
 
-        private bool _isAutoOpenSounds = true;
-        public bool IsAutoOpenSounds
-        {
-            get => _isAutoOpenSounds;
-            set => SetProperty(ref _isAutoOpenSounds, value);
-        }
-
         private bool _isLoggerExpanded = true;
         public bool IsLoggerExpanded
         {
@@ -198,6 +194,13 @@ namespace FModel.Settings
         {
             get => _keepDirectoryStructure;
             set => SetProperty(ref _keepDirectoryStructure, value);
+        }
+
+        private bool _showDecompileOption = false;
+        public bool ShowDecompileOption
+        {
+            get => _showDecompileOption;
+            set => SetProperty(ref _showDecompileOption, value);
         }
 
         private ECompressedAudio _compressedAudioMode = ECompressedAudio.PlayDecompressed;
@@ -256,6 +259,13 @@ namespace FModel.Settings
             set => SetProperty(ref _readScriptData, value);
         }
 
+        private bool _readShaderMaps;
+        public bool ReadShaderMaps
+        {
+            get => _readShaderMaps;
+            set => SetProperty(ref _readShaderMaps, value);
+        }
+
         private IDictionary<string, DirectorySettings> _perDirectory = new Dictionary<string, DirectorySettings>();
         public IDictionary<string, DirectorySettings> PerDirectory
         {
@@ -295,6 +305,13 @@ namespace FModel.Settings
         {
             get => _dirRightTab;
             set => SetProperty(ref _dirRightTab, value);
+        }
+
+        private Hotkey _switchAssetExplorer = new(Key.Z);
+        public Hotkey SwitchAssetExplorer
+        {
+            get => _switchAssetExplorer;
+            set => SetProperty(ref _switchAssetExplorer, value);
         }
 
         private Hotkey _assetLeftTab = new(Key.Q);
@@ -353,11 +370,18 @@ namespace FModel.Settings
             set => SetProperty(ref _nextAudio, value);
         }
 
-        private EMeshFormat _meshExportFormat = EMeshFormat.ActorX;
+        private EMeshFormat _meshExportFormat = EMeshFormat.UEFormat;
         public EMeshFormat MeshExportFormat
         {
             get => _meshExportFormat;
             set => SetProperty(ref _meshExportFormat, value);
+        }
+
+        private ENaniteMeshFormat _naniteMeshExportFormat = ENaniteMeshFormat.OnlyNaniteLOD;
+        public ENaniteMeshFormat NaniteMeshExportFormat
+        {
+            get => _naniteMeshExportFormat;
+            set => SetProperty(ref _naniteMeshExportFormat, value);
         }
 
         private EMaterialFormat _materialExportFormat = EMaterialFormat.FirstLayer;
@@ -423,6 +447,13 @@ namespace FModel.Settings
             set => SetProperty(ref _cameraMode, value);
         }
 
+        private int _wwiseMaxBnkPrefetch;
+        public int WwiseMaxBnkPrefetch
+        {
+            get => _wwiseMaxBnkPrefetch;
+            set => SetProperty(ref _wwiseMaxBnkPrefetch, value);
+        }
+
         private int _previewMaxTextureSize = 1024;
         public int PreviewMaxTextureSize
         {
@@ -442,6 +473,13 @@ namespace FModel.Settings
         {
             get => _previewSkeletalMeshes;
             set => SetProperty(ref _previewSkeletalMeshes, value);
+        }
+
+        private bool _previewAnimations = true;
+        public bool PreviewAnimations
+        {
+            get => _previewAnimations;
+            set => SetProperty(ref _previewAnimations, value);
         }
 
         private bool _previewMaterials = true;
@@ -477,6 +515,27 @@ namespace FModel.Settings
         {
             get => _saveSkeletonAsMesh;
             set => SetProperty(ref _saveSkeletonAsMesh, value);
+        }
+
+        private bool _saveHdrTexturesAsHdr = true;
+        public bool SaveHdrTexturesAsHdr
+        {
+            get => _saveHdrTexturesAsHdr;
+            set => SetProperty(ref _saveHdrTexturesAsHdr, value);
+        }
+
+        private bool _featurePreviewNewAssetExplorer = true;
+        public bool FeaturePreviewNewAssetExplorer
+        {
+            get => _featurePreviewNewAssetExplorer;
+            set => SetProperty(ref _featurePreviewNewAssetExplorer, value);
+        }
+
+        private bool _previewTexturesAssetExplorer = true;
+        public bool PreviewTexturesAssetExplorer
+        {
+            get => _previewTexturesAssetExplorer;
+            set => SetProperty(ref _previewTexturesAssetExplorer, value);
         }
     }
 }

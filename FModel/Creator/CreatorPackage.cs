@@ -1,21 +1,24 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using CUE4Parse.UE4.Assets.Exports;
 using FModel.Creator.Bases;
-using FModel.Creator.Bases.BB;
 using FModel.Creator.Bases.FN;
 using FModel.Creator.Bases.MV;
-using FModel.Creator.Bases.SB;
 
 namespace FModel.Creator;
 
 public class CreatorPackage : IDisposable
 {
-    private UObject _object;
+    private string _pkgName;
+    private string _exportType;
+    private Lazy<UObject> _object;
     private EIconStyle _style;
 
-    public CreatorPackage(UObject uObject, EIconStyle style)
+    public CreatorPackage(string packageName, string exportType, Lazy<UObject> uObject, EIconStyle style)
     {
+        _pkgName = packageName;
+        _exportType = exportType;
         _object = uObject;
         _style = style;
     }
@@ -28,12 +31,12 @@ public class CreatorPackage : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryConstructCreator(out UCreator creator)
+    public bool TryConstructCreator([MaybeNullWhen(false)] out UCreator creator)
     {
-        switch (_object.ExportType)
+        // TODO: convert to a type based system
+        switch (_exportType)
         {
             // Fortnite
-            case "FortCreativeWeaponMeleeItemDefinition":
             case "AthenaConsumableEmoteItemDefinition":
             case "AthenaSkyDiveContrailItemDefinition":
             case "AthenaLoadingScreenItemDefinition":
@@ -44,9 +47,13 @@ public class CreatorPackage : IDisposable
             case "AthenaCharacterItemDefinition":
             case "AthenaMapMarkerItemDefinition":
             case "AthenaBackpackItemDefinition":
+            case "CosmeticShoesItemDefinition":
+            case "CosmeticCompanionItemDefinition":
+            case "CosmeticCompanionReactFXItemDefinition":
             case "AthenaPickaxeItemDefinition":
             case "AthenaGadgetItemDefinition":
             case "AthenaGliderItemDefinition":
+            case "AthenaHatItemDefinition":
             case "AthenaSprayItemDefinition":
             case "AthenaDanceItemDefinition":
             case "AthenaEmojiItemDefinition":
@@ -88,6 +95,7 @@ public class CreatorPackage : IDisposable
             case "FortBackpackItemDefinition":
             case "FortEventQuestMapDataAsset":
             case "FortBuildingItemDefinition":
+            case "FortItemCacheItemDefinition":
             case "FortWeaponModItemDefinition":
             case "FortCodeTokenItemDefinition":
             case "FortSchematicItemDefinition":
@@ -100,7 +108,7 @@ public class CreatorPackage : IDisposable
             case "FortConsumableItemDefinition":
             case "StWFortAccoladeItemDefinition":
             case "FortAccountBuffItemDefinition":
-            case "FortWeaponMeleeItemDefinition":
+            case "FortFOBCoreDecoItemDefinition":
             case "FortPlayerPerksItemDefinition":
             case "FortPlaysetPropItemDefinition":
             case "FortPrerollDataItemDefinition":
@@ -110,6 +118,7 @@ public class CreatorPackage : IDisposable
             case "FortPlayerAugmentItemDefinition":
             case "FortSmartBuildingItemDefinition":
             case "FortGiftBoxUnlockItemDefinition":
+            case "FortCreativeGadgetItemDefinition":
             case "FortWeaponModItemDefinitionOptic":
             case "RadioContentSourceItemDefinition":
             case "FortPlaysetGrenadeItemDefinition":
@@ -134,9 +143,7 @@ public class CreatorPackage : IDisposable
             case "FortCampaignHeroLoadoutItemDefinition":
             case "FortConditionalResourceItemDefinition":
             case "FortChallengeBundleScheduleDefinition":
-            case "FortWeaponMeleeDualWieldItemDefinition":
             case "FortDailyRewardScheduleTokenDefinition":
-            case "FortCreativeWeaponRangedItemDefinition":
             case "FortVehicleCosmeticsItemDefinition_Body":
             case "FortVehicleCosmeticsItemDefinition_Skin":
             case "FortVehicleCosmeticsItemDefinition_Wheel":
@@ -148,43 +155,46 @@ public class CreatorPackage : IDisposable
             case "FortVehicleCosmeticsItemDefinition_EngineAudio":
                 creator = _style switch
                 {
-                    EIconStyle.Cataba => new BaseCommunity(_object, _style, "Cataba"),
-                    _ => new BaseIcon(_object, _style)
+                    EIconStyle.Cataba => new BaseCommunity(_object.Value, _style, "Cataba"),
+                    _ => new BaseIcon(_object.Value, _style)
                 };
                 return true;
             case "JunoAthenaCharacterItemOverrideDefinition":
             case "JunoAthenaDanceItemOverrideDefinition":
-                creator = new BaseJuno(_object, _style);
+                creator = new BaseJuno(_object.Value, _style);
                 return true;
             case "FortTandemCharacterData":
-                creator = new BaseTandem(_object, _style);
+                creator = new BaseTandem(_object.Value, _style);
                 return true;
             case "FortTrapItemDefinition":
             case "FortSpyTechItemDefinition":
             case "FortAccoladeItemDefinition":
             case "FortContextTrapItemDefinition":
+            case "FortWeaponMeleeItemDefinition":
             case "FortWeaponRangedItemDefinition":
+            case "FortCreativeWeaponMeleeItemDefinition":
+            case "FortWeaponMeleeDualWieldItemDefinition":
+            case "FortCreativeWeaponRangedItemDefinition":
             case "Daybreak_LevelExitVehicle_PartItemDefinition_C":
-                creator = new BaseIconStats(_object, _style);
+                creator = new BaseIconStats(_object.Value, _style);
                 return true;
             case "FortItemSeriesDefinition":
-                creator = new BaseSeries(_object, _style);
+                creator = new BaseSeries(_object.Value, _style);
                 return true;
             case "MaterialInstanceConstant"
-                when _object.Owner != null &&
-                     (_object.Owner.Name.Contains("/MI_OfferImages/", StringComparison.OrdinalIgnoreCase) ||
-                      _object.Owner.Name.EndsWith($"/RenderSwitch_Materials/{_object.Name}", StringComparison.OrdinalIgnoreCase) ||
-                      _object.Owner.Name.EndsWith($"/MI_BPTile/{_object.Name}", StringComparison.OrdinalIgnoreCase)):
-                creator = new BaseMaterialInstance(_object, _style);
+                when _pkgName.Contains("/MI_OfferImages/", StringComparison.OrdinalIgnoreCase) ||
+                     _pkgName.Contains("/RenderSwitch_Materials/", StringComparison.OrdinalIgnoreCase) ||
+                     _pkgName.Contains("/MI_BPTile/", StringComparison.OrdinalIgnoreCase):
+                creator = new BaseMaterialInstance(_object.Value, _style);
                 return true;
             case "AthenaItemShopOfferDisplayData":
-                creator = new BaseOfferDisplayData(_object, _style);
+                creator = new BaseOfferDisplayData(_object.Value, _style);
                 return true;
             case "FortMtxOfferData":
-                creator = new BaseMtxOffer(_object, _style);
+                creator = new BaseMtxOffer(_object.Value, _style);
                 return true;
             case "FortPlaylistAthena":
-                creator = new BasePlaylist(_object, _style);
+                creator = new BasePlaylist(_object.Value, _style);
                 return true;
             case "FortFeatItemDefinition":
             case "FortQuestItemDefinition":
@@ -192,17 +202,18 @@ public class CreatorPackage : IDisposable
             case "FortQuestItemDefinition_Campaign":
             case "AthenaDailyQuestDefinition":
             case "FortUrgentQuestItemDefinition":
-                creator = new Bases.FN.BaseQuest(_object, _style);
+                creator = new Bases.FN.BaseQuest(_object.Value, _style);
                 return true;
             case "FortCompendiumItemDefinition":
+            case "FortCompendiumBundleDefinition":
             case "FortChallengeBundleItemDefinition":
-                creator = new BaseBundle(_object, _style);
+                creator = new BaseBundle(_object.Value, _style);
                 return true;
             // case "AthenaSeasonItemDefinition":
             //     creator = new BaseSeason(_object, _style);
             //     return true;
             case "FortItemAccessTokenType":
-                creator = new BaseItemAccessToken(_object, _style);
+                creator = new BaseItemAccessToken(_object.Value, _style);
                 return true;
             case "FortCreativeOption":
             case "PlaylistUserOptionEnum":
@@ -216,14 +227,14 @@ public class CreatorPackage : IDisposable
             case "PlaylistUserTintedIconIntEnum":
             case "PlaylistUserOptionPrimaryAsset":
             case "PlaylistUserOptionCollisionProfileEnum":
-                creator = new BaseUserControl(_object, _style);
+                creator = new BaseUserControl(_object.Value, _style);
                 return true;
             // PandaGame
             case "CharacterData":
-                creator = new BaseFighter(_object, _style);
+                creator = new BaseFighter(_object.Value, _style);
                 return true;
             case "PerkGroup":
-                creator = new BasePerkGroup(_object, _style);
+                creator = new BasePerkGroup(_object.Value, _style);
                 return true;
             case "StatTrackingBundleData":
             case "HydraSyncedDataAsset":
@@ -236,10 +247,10 @@ public class CreatorPackage : IDisposable
             case "TauntData":
             case "SkinData":
             case "PerkData":
-                creator = new BasePandaIcon(_object, _style);
+                creator = new BasePandaIcon(_object.Value, _style);
                 return true;
             case "QuestData":
-                creator = new Bases.MV.BaseQuest(_object, _style);
+                creator = new Bases.MV.BaseQuest(_object.Value, _style);
                 return true;
             default:
                 creator = null;
@@ -247,7 +258,7 @@ public class CreatorPackage : IDisposable
         }
     }
 
-    public override string ToString() => $"{_object.ExportType} | {_style}";
+    public override string ToString() => $"{_exportType} | {_style}";
 
     public void Dispose()
     {

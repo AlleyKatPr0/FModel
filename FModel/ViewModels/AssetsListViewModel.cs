@@ -1,78 +1,26 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Windows.Data;
-using CUE4Parse.Compression;
+using CUE4Parse.FileProvider.Objects;
 using FModel.Framework;
 
 namespace FModel.ViewModels;
 
-public class AssetItem : ViewModel
-{
-    private string _fullPath;
-    public string FullPath
-    {
-        get => _fullPath;
-        private set => SetProperty(ref _fullPath, value);
-    }
-
-    private bool _isEncrypted;
-    public bool IsEncrypted
-    {
-        get => _isEncrypted;
-        private set => SetProperty(ref _isEncrypted, value);
-    }
-
-    private long _offset;
-    public long Offset
-    {
-        get => _offset;
-        private set => SetProperty(ref _offset, value);
-    }
-
-    private long _size;
-    public long Size
-    {
-        get => _size;
-        private set => SetProperty(ref _size, value);
-    }
-
-    private string _archive;
-    public string Archive
-    {
-        get => _archive;
-        private set => SetProperty(ref _archive, value);
-    }
-
-    private CompressionMethod _compression;
-    public CompressionMethod Compression
-    {
-        get => _compression;
-        private set => SetProperty(ref _compression, value);
-    }
-
-    public AssetItem(string fullPath, bool isEncrypted, long offset, long size, string archive, CompressionMethod compression)
-    {
-        FullPath = fullPath;
-        IsEncrypted = isEncrypted;
-        Offset = offset;
-        Size = size;
-        Archive = archive;
-        Compression = compression;
-    }
-
-    public override string ToString() => FullPath;
-}
-
 public class AssetsListViewModel
 {
-    public RangeObservableCollection<AssetItem> Assets { get; }
-    public ICollectionView AssetsView { get; }
+    public RangeObservableCollection<GameFileViewModel> Assets { get; } = [];
 
-    public AssetsListViewModel()
+    private ICollectionView _assetsView;
+    public ICollectionView AssetsView
     {
-        Assets = new RangeObservableCollection<AssetItem>();
-        AssetsView = new ListCollectionView(Assets)
+        get
         {
-            SortDescriptions = { new SortDescription("FullPath", ListSortDirection.Ascending) }
-        };
+            _assetsView ??= new ListCollectionView(Assets)
+            {
+                SortDescriptions = { new SortDescription("Asset.Path", ListSortDirection.Ascending) }
+            };
+            return _assetsView;
+        }
     }
+
+    public void Add(GameFile gameFile) => Assets.Add(new GameFileViewModel(gameFile));
 }
