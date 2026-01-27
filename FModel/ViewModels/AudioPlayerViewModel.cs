@@ -1,7 +1,3 @@
-﻿using CSCore;
-using CSCore.DSP;
-using CSCore.SoundOut;
-using CSCore.Streams;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -12,7 +8,15 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Data;
+using CSCore;
 using CSCore.CoreAudioAPI;
+using CSCore.DSP;
+using CSCore.SoundOut;
+using CSCore.Streams;
+using CUE4Parse.UE4.CriWare.Decoders;
+using CUE4Parse.UE4.CriWare.Decoders.ADX;
+using CUE4Parse.UE4.CriWare.Decoders.HCA;
+using CUE4Parse.Utils;
 using FModel.Extensions;
 using FModel.Framework;
 using FModel.Services;
@@ -293,6 +297,14 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
             {
                 Save(a, true);
             }
+
+            FLogger.Append(ELog.Information, () =>
+            {
+                FLogger.Text("Successfully saved audio from ", Constants.WHITE);
+                FLogger.Link(_audioFiles.First().FileName, _audioFiles.First().FilePath, true);
+            });
+            if (_audioFiles.Count > 1)
+                FLogger.Append(ELog.Information, () => FLogger.Text($"Successfully saved {_audioFiles.Count} audio files", Constants.WHITE, true));
         });
     }
 
@@ -328,16 +340,22 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
         if (File.Exists(path))
         {
             Log.Information("{FileName} successfully saved", fileToSave.FileName);
-            FLogger.Append(ELog.Information, () =>
+            if (!auto)
             {
-                FLogger.Text("Successfully saved ", Constants.WHITE);
-                FLogger.Link(fileToSave.FileName, path, true);
-            });
+                FLogger.Append(ELog.Information, () =>
+                {
+                    FLogger.Text("Successfully saved ", Constants.WHITE);
+                    FLogger.Link(fileToSave.FileName, path, true);
+                });
+            }
         }
         else
         {
             Log.Error("{FileName} could not be saved", fileToSave.FileName);
-            FLogger.Append(ELog.Error, () => FLogger.Text($"Could not save '{fileToSave.FileName}'", Constants.WHITE, true));
+            if (!auto)
+            {
+                FLogger.Append(ELog.Error, () => FLogger.Text($"Could not save '{fileToSave.FileName}'", Constants.WHITE, true));
+            }
         }
     }
 
@@ -548,7 +566,9 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
 
         switch (SelectedAudioFile.Extension)
         {
+            case "binka":
             case "adpcm":
+            case "xvag":
             case "opus":
             case "wem":
             case "at9":
@@ -563,9 +583,12 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
 
                 return false;
             }
-            case "binka":
+            case "adx":
+            case "hca":
+                return TryConvertCriware();
+            case "rada":
             {
-                if (TryDecode(out var rawFilePath))
+                if (TryDecode(SelectedAudioFile.Extension, out var rawFilePath))
                 {
                     var newAudio = new AudioFile(SelectedAudioFile.Id, new FileInfo(rawFilePath));
                     Replace(newAudio);
@@ -577,6 +600,48 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
         }
 
         return true;
+    }
+
+    private bool TryConvertCriware()
+    {
+        try
+        {
+            byte[] wavData = SelectedAudioFile.Extension switch
+            {
+                "hca" => HcaWaveStream.ConvertHcaToWav(
+                    SelectedAudioFile.Data,
+                    UserSettings.Default.CurrentDir.CriwareDecryptionKey),
+                "adx" => AdxDecoder.ConvertAdxToWav(
+                    SelectedAudioFile.Data,
+                    UserSettings.Default.CurrentDir.CriwareDecryptionKey),
+                _ => throw new NotSupportedException()
+            };
+
+            string wavFilePath = Path.Combine(
+                UserSettings.Default.AudioDirectory,
+                SelectedAudioFile.FilePath.TrimStart('/'));
+            wavFilePath = Path.ChangeExtension(wavFilePath, ".wav");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(wavFilePath)!);
+            File.WriteAllBytes(wavFilePath, wavData);
+
+            var newAudio = new AudioFile(SelectedAudioFile.Id, new FileInfo(wavFilePath));
+            Replace(newAudio);
+
+            return true;
+        }
+        catch (CriwareDecryptionException ex)
+        {
+            FLogger.Append(ELog.Error, () => FLogger.Text($"Encrypted {SelectedAudioFile.Extension.ToUpper()}: {ex.Message}", Constants.WHITE, true));
+            Log.Error($"Encrypted {SelectedAudioFile.Extension.ToUpper()}: {ex.Message}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            FLogger.Append(ELog.Error, () => FLogger.Text($"Failed to convert {SelectedAudioFile.Extension.ToUpper()}: {ex.Message}", Constants.WHITE, true));
+            Log.Error($"Failed to convert {SelectedAudioFile.Extension.ToUpper()}: {ex.Message}");
+            return false;
+        }
     }
 
     private bool TryConvert(out string wavFilePath) => TryConvert(SelectedAudioFile.FilePath, SelectedAudioFile.Data, out wavFilePath);
@@ -607,11 +672,11 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
         return vgmProcess?.ExitCode == 0 && File.Exists(wavFilePath);
     }
 
-    private bool TryDecode(out string rawFilePath)
+    private bool TryDecode(string extension, out string rawFilePath)
     {
         rawFilePath = string.Empty;
-        var binkadecPath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", "binkadec.exe");
-        if (!File.Exists(binkadecPath))
+        var decoderPath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", $"{extension}dec.exe");
+        if (!File.Exists(decoderPath))
         {
             return false;
         }
@@ -620,16 +685,16 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
         File.WriteAllBytes(SelectedAudioFile.FilePath, SelectedAudioFile.Data);
 
         rawFilePath = Path.ChangeExtension(SelectedAudioFile.FilePath, ".wav");
-        var binkadecProcess = Process.Start(new ProcessStartInfo
+        var decoderProcess = Process.Start(new ProcessStartInfo
         {
-            FileName = binkadecPath,
+            FileName = decoderPath,
             Arguments = $"-i \"{SelectedAudioFile.FilePath}\" -o \"{rawFilePath}\"",
             UseShellExecute = false,
             CreateNoWindow = true
         });
-        binkadecProcess?.WaitForExit(5000);
+        decoderProcess?.WaitForExit(5000);
 
         File.Delete(SelectedAudioFile.FilePath);
-        return binkadecProcess?.ExitCode == 0 && File.Exists(rawFilePath);
+        return decoderProcess?.ExitCode == 0 && File.Exists(rawFilePath);
     }
 }

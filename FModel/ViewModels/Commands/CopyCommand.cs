@@ -1,8 +1,9 @@
-﻿using System.Collections;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Windows;
-using FModel.Extensions;
+using CUE4Parse.FileProvider.Objects;
 using FModel.Framework;
 
 namespace FModel.ViewModels.Commands;
@@ -18,26 +19,34 @@ public class CopyCommand : ViewModelCommand<ApplicationViewModel>
         if (parameter is not object[] parameters || parameters[0] is not string trigger)
             return;
 
-        var assetItems = ((IList) parameters[1]).Cast<AssetItem>().ToArray();
-        if (!assetItems.Any()) return;
+        var entries = (parameters[1] as IEnumerable)?.OfType<object>()
+            .SelectMany(item => item switch
+            {
+                GameFile gf => new[] { gf },
+                GameFileViewModel gvm => new[] { gvm.Asset },
+                _ => []
+            }) ?? [];
+
+        if (!entries.Any())
+            return;
 
         var sb = new StringBuilder();
         switch (trigger)
         {
             case "File_Path":
-                foreach (var asset in assetItems) sb.AppendLine(asset.FullPath);
+                foreach (var entry in entries) sb.AppendLine(entry.Path);
                 break;
             case "File_Name":
-                foreach (var asset in assetItems) sb.AppendLine(asset.FullPath.SubstringAfterLast('/'));
+                foreach (var entry in entries) sb.AppendLine(entry.Name);
                 break;
             case "Directory_Path":
-                foreach (var asset in assetItems) sb.AppendLine(asset.FullPath.SubstringBeforeLast('/'));
+                foreach (var entry in entries) sb.AppendLine(entry.Directory);
                 break;
             case "File_Path_No_Extension":
-                foreach (var asset in assetItems) sb.AppendLine(asset.FullPath.SubstringBeforeLast('.'));
+                foreach (var entry in entries) sb.AppendLine(entry.PathWithoutExtension);
                 break;
             case "File_Name_No_Extension":
-                foreach (var asset in assetItems) sb.AppendLine(asset.FullPath.SubstringAfterLast('/').SubstringBeforeLast('.'));
+                foreach (var entry in entries) sb.AppendLine(entry.NameWithoutExtension);
                 break;
         }
 
