@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.TextFormatting;
+using CUE4Parse.Utils;
 using FModel.Extensions;
 using FModel.Services;
 using FModel.ViewModels;
@@ -69,31 +70,24 @@ public class GamePathVisualLineText : VisualLineText
         {
             var obj = gamePath.SubstringAfterLast('.');
             var package = gamePath.SubstringBeforeLast('.');
-            var fullPath = _applicationView.CUE4Parse.Provider.FixPath(package, StringComparison.Ordinal);
-            if (a.ParentVisualLine.Document.FileName.Equals(fullPath.SubstringBeforeLast('.'), StringComparison.OrdinalIgnoreCase))
-            {
-                int lineNumber;
-                DocumentLine line;
+            var fullPath = _applicationView.CUE4Parse.Provider.FixPath(package);
 
-                if (Regex.IsMatch(obj, @"^(.+)\[(\d+)\]$"))
-                {
-                    lineNumber = a.ParentVisualLine.Document.Text.GetKismetLineNumber(obj);
-                    line = a.ParentVisualLine.Document.GetLineByNumber(lineNumber);
-                }
-                else
-                {
-                    lineNumber = a.ParentVisualLine.Document.Text.GetNameLineNumber(obj);
-                    line = a.ParentVisualLine.Document.GetLineByNumber(lineNumber);
-                }
-
-                AvalonEditor.YesWeEditor.Select(line.Offset, line.Length);
-                AvalonEditor.YesWeEditor.ScrollToLine(lineNumber);
-            }
-            else
+            var firstLine = a.ParentVisualLine.Document.GetLineByNumber(2);
+            if (a.ParentVisualLine.Document.FileName.Equals(fullPath.SubstringBeforeLast('.'), StringComparison.OrdinalIgnoreCase) &&
+                !a.ParentVisualLine.Document.GetText(firstLine.Offset, firstLine.Length).Equals("  \"Summary\": {")) // Show Metadata case
             {
-                await _threadWorkerView.Begin(cancellationToken =>
-                    _applicationView.CUE4Parse.ExtractAndScroll(cancellationToken, fullPath, obj, parentExportType));
+                var lineNumber = a.ParentVisualLine.Document.Text.GetNameLineNumber(obj);
+                if (lineNumber > -1)
+                {
+                    var line = a.ParentVisualLine.Document.GetLineByNumber(lineNumber);
+                    AvalonEditor.YesWeEditor.Select(line.Offset, line.Length);
+                    AvalonEditor.YesWeEditor.ScrollToLine(lineNumber);
+                    return;
+                }
             }
+
+            await _threadWorkerView.Begin(cancellationToken =>
+                _applicationView.CUE4Parse.ExtractAndScroll(cancellationToken, fullPath, obj, parentExportType));
         };
         return a;
     }

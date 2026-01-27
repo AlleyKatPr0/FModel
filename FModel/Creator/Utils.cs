@@ -12,6 +12,7 @@ using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse_Conversion.Textures;
 using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.Utils;
 using FModel.Framework;
 using FModel.Extensions;
 using FModel.Services;
@@ -127,9 +128,9 @@ public static class Utils
     }
 
     public static SKBitmap GetB64Bitmap(string b64) => SKBitmap.Decode(new MemoryStream(Convert.FromBase64String(b64)) { Position = 0 });
-    public static SKBitmap GetBitmap(FSoftObjectPath softObjectPath) => GetBitmap(softObjectPath.AssetPathName.Text);
+    public static SKBitmap GetBitmap(FSoftObjectPath softObjectPath) => GetBitmap(softObjectPath.Load<UTexture2D>());
     public static SKBitmap GetBitmap(string fullPath) => TryLoadObject(fullPath, out UTexture2D texture) ? GetBitmap(texture) : null;
-    public static SKBitmap GetBitmap(UTexture2D texture) => texture.Decode(UserSettings.Default.CurrentDir.TexturePlatform);
+    public static SKBitmap GetBitmap(UTexture2D texture) => texture.Decode(UserSettings.Default.CurrentDir.TexturePlatform).ToSkBitmap();
     public static SKBitmap GetBitmap(byte[] data) => SKBitmap.Decode(data);
 
     public static SKBitmap ResizeWithRatio(this SKBitmap me, double width, double height)
@@ -160,12 +161,7 @@ public static class Utils
     // fullpath must be either without any extension or with the export objectname
     public static bool TryLoadObject<T>(string fullPath, out T export) where T : UObject
     {
-        return _applicationView.CUE4Parse.Provider.TryLoadObject(fullPath, out export);
-    }
-
-    public static IEnumerable<UObject> LoadExports(string packagePath)
-    {
-        return _applicationView.CUE4Parse.Provider.LoadAllObjects(packagePath);
+        return _applicationView.CUE4Parse.Provider.TryLoadPackageObject(fullPath, out export);
     }
 
     public static float GetMaxFontSize(double sectorSize, SKTypeface typeface, string text, float degreeOfCertainty = 1f, float maxFont = 100f)
@@ -199,11 +195,11 @@ public static class Utils
 
     public static string GetLocalizedResource(string @namespace, string key, string defaultValue)
     {
-        return _applicationView.CUE4Parse.Provider.GetLocalizedString(@namespace, key, defaultValue);
+        return _applicationView.CUE4Parse.Provider.Internationalization.SafeGet(@namespace, key, defaultValue);
     }
     public static string GetLocalizedResource<T>(T @enum) where T : Enum
     {
-        var resource = _applicationView.CUE4Parse.Provider.GetLocalizedString("", @enum.GetDescription(), @enum.ToString());
+        var resource = _applicationView.CUE4Parse.Provider.Internationalization.SafeGet("", @enum.GetDescription(), @enum.ToString());
         return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(resource.ToLower());
     }
 

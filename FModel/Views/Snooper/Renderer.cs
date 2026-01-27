@@ -8,9 +8,11 @@ using CUE4Parse_Conversion.Animations;
 using CUE4Parse_Conversion.Meshes;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Animation;
+using CUE4Parse.UE4.Assets.Exports.Component.SplineMesh;
 using CUE4Parse.UE4.Assets.Exports.Component.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.GeometryCollection;
 using CUE4Parse.UE4.Assets.Exports.Material;
+using CUE4Parse.UE4.Assets.Exports.Nanite;
 using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
@@ -18,8 +20,8 @@ using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.Utils;
 using FModel.Creator;
-using FModel.Extensions;
 using FModel.Settings;
 using FModel.Views.Snooper.Animations;
 using FModel.Views.Snooper.Buffers;
@@ -77,33 +79,33 @@ public class Renderer : IDisposable
         Color = VertexColor.Default;
     }
 
-    public void Load(CancellationToken cancellationToken, UObject export)
+    public void Load(CancellationToken cancellationToken, UObject dummy, Lazy<UObject> export)
     {
         ShowLights = false;
         Color = VertexColor.Default;
-        _saveCameraMode = export is not UWorld and not UBlueprintGeneratedClass;
-        switch (export)
+        _saveCameraMode = dummy is not UWorld and not UBlueprintGeneratedClass;
+        switch (dummy)
         {
-            case UStaticMesh st:
-                LoadStaticMesh(st);
+            case UStaticMesh when export.Value is UStaticMesh st:
+                LoadStaticMesh(st, UserSettings.Default.NaniteMeshExportFormat);
                 break;
-            case USkeletalMesh sk:
+            case USkeletalMesh when export.Value is USkeletalMesh sk:
                 LoadSkeletalMesh(sk);
                 break;
-            case USkeleton skel:
+            case USkeleton when export.Value is USkeleton skel:
                 LoadSkeleton(skel);
                 break;
-            case UMaterialInstance mi:
+            case UMaterialInstance when export.Value is UMaterialInstance mi:
                 LoadMaterialInstance(mi);
                 break;
-            case UWorld wd:
+            case UWorld when export.Value is UWorld wd:
                 LoadWorld(cancellationToken, wd, Transform.Identity);
                 break;
-            case UBlueprintGeneratedClass bp:
+            case UBlueprintGeneratedClass when export.Value is UBlueprintGeneratedClass bp:
                 LoadJunoWorld(cancellationToken, bp, Transform.Identity);
                 Color = VertexColor.Colors;
                 break;
-            case UPaperSprite ps:
+            case UPaperSprite when export.Value is UPaperSprite ps:
                 LoadPaperSprite(ps);
                 break;
         }
@@ -119,114 +121,114 @@ public class Renderer : IDisposable
         Application.Current.Dispatcher.Invoke(() => model.Materials[section.MaterialIndex].Setup(Options, model.UvCount));
     }
 
-    public void Animate(UObject anim) => Animate(anim, Options.SelectedModel);
+    public void Animate(UObject anim)
+    {
+        if (!Services.ApplicationService.ApplicationView.CUE4Parse.ModelIsWaitingAnimation)
+        {
+            if (anim is UAnimSequenceBase animBase)
+            {
+                /*if (Options.TryGetModel(out var selected) &&
+                    selected is SkeletalModel { IsVisible: true } skeletalModel &&
+                    skeletalModel.Skeleton.Guid == animBase.SkeletonGuid)
+                {
+                    // do nothing, selected model has the correct skeleton for this animation
+                }
+                else */if (animBase.Skeleton.TryLoad(out USkeleton skeleton))
+                {
+                    LoadSkeleton(skeleton);
+                }
+            }
+            else return; // should never end here
+        }
+
+        Animate(anim, Options.SelectedModel);
+    }
     private void Animate(UObject anim, FGuid guid)
     {
-        if (!Options.TryGetModel(guid, out var m) || m is not SkeletalModel model)
+        if (anim is not UAnimSequenceBase animBase || !animBase.Skeleton.TryLoad(out USkeleton skeleton) ||
+            !Options.TryGetModel(guid, out var m) || m is not SkeletalModel model)
             return;
 
-        float maxElapsedTime;
-        switch (anim)
+        var animSet = animBase switch
         {
-            case UAnimSequence animSequence when animSequence.Skeleton.TryLoad(out USkeleton skeleton):
-            {
-                var animSet = skeleton.ConvertAnims(animSequence);
-                var animation = new Animation(animSequence, animSet, guid);
-                maxElapsedTime = animation.TotalElapsedTime;
-                model.Skeleton.Animate(animSet);
-                Options.AddAnimation(animation);
-                break;
-            }
-            case UAnimMontage animMontage when animMontage.Skeleton.TryLoad(out USkeleton skeleton):
-            {
-                var animSet = skeleton.ConvertAnims(animMontage);
-                var animation = new Animation(animMontage, animSet, guid);
-                maxElapsedTime = animation.TotalElapsedTime;
-                model.Skeleton.Animate(animSet);
-                Options.AddAnimation(animation);
+            UAnimSequence animSequence => skeleton.ConvertAnims(animSequence),
+            UAnimMontage animMontage => skeleton.ConvertAnims(animMontage),
+            UAnimComposite animComposite => skeleton.ConvertAnims(animComposite),
+            _ => throw new ArgumentException("Unknown animation type")
+        };
 
-                foreach (var notifyEvent in animMontage.Notifies)
+        var animation = new Animation(anim, animSet, guid);
+        model.Skeleton.Animate(animSet);
+        Options.AddAnimation(animation);
+
+        foreach (var notifyEvent in animBase.Notifies)
+        {
+            if (!notifyEvent.NotifyStateClass.TryLoad(out UObject notifyClass) ||
+                !notifyClass.TryGetValue(out UObject export, "SkeletalMeshProp", "StaticMeshProp", "Mesh", "SkeletalMeshTemplate"))
+                continue;
+
+            var t = Transform.Identity;
+            if (notifyClass.TryGetValue(out FTransform offset, "Offset"))
+            {
+                t.Rotation = offset.Rotation;
+                t.Position = offset.Translation * Constants.SCALE_DOWN_RATIO;
+                t.Scale = offset.Scale3D;
+            }
+
+            UModel addedModel = null;
+            switch (export)
+            {
+                case UStaticMesh st:
                 {
-                    if (!notifyEvent.NotifyStateClass.TryLoad(out UObject notifyClass) ||
-                        !notifyClass.TryGetValue(out FPackageIndex meshProp, "SkeletalMeshProp", "StaticMeshProp", "Mesh") ||
-                        !meshProp.TryLoad(out UObject export)) continue;
-
-                    var t = Transform.Identity;
-                    if (notifyClass.TryGetValue(out FTransform offset, "Offset"))
+                    guid = st.LightingGuid;
+                    if (Options.TryGetModel(guid, out addedModel))
                     {
-                        t.Rotation = offset.Rotation;
-                        t.Position = offset.Translation * Constants.SCALE_DOWN_RATIO;
-                        t.Scale = offset.Scale3D;
+                        addedModel.AddInstance(t);
                     }
-
-                    UModel addedModel = null;
-                    switch (export)
+                    else if (st.TryConvert(out var mesh))
                     {
-                        case UStaticMesh st:
-                        {
-                            guid = st.LightingGuid;
-                            if (Options.TryGetModel(guid, out addedModel))
-                            {
-                                addedModel.AddInstance(t);
-                            }
-                            else if (st.TryConvert(out var mesh))
-                            {
-                                addedModel = new StaticModel(st, mesh, t);
-                                Options.Models[guid] = addedModel;
-                            }
-                            break;
-                        }
-                        case USkeletalMesh sk:
-                        {
-                            guid = Guid.NewGuid();
-                            if (!Options.Models.ContainsKey(guid) && sk.TryConvert(out var mesh))
-                            {
-                                addedModel = new SkeletalModel(sk, mesh, t);
-                                Options.Models[guid] = addedModel;
-                            }
-                            break;
-                        }
+                        addedModel = new StaticModel(st, mesh, t);
+                        Options.Models[guid] = addedModel;
                     }
-
-                    if (addedModel == null)
-                        throw new ArgumentException("Unknown model type");
-
-                    addedModel.IsProp = true;
-                    if (notifyClass.TryGetValue(out UObject skeletalMeshPropAnimation, "SkeletalMeshPropAnimation", "Animation"))
-                        Animate(skeletalMeshPropAnimation, guid);
-                    if (notifyClass.TryGetValue(out FName socketName, "SocketName"))
-                    {
-                        t = Transform.Identity;
-                        if (notifyClass.TryGetValue(out FVector location, "LocationOffset", "Location"))
-                            t.Position = location * Constants.SCALE_DOWN_RATIO;
-                        if (notifyClass.TryGetValue(out FRotator rotation, "RotationOffset", "Rotation"))
-                            t.Rotation = rotation.Quaternion();
-                        if (notifyClass.TryGetValue(out FVector scale, "Scale"))
-                            t.Scale = scale;
-
-                        var s = new Socket($"ANIM_{addedModel.Name}", socketName, t, true);
-                        model.Sockets.Add(s);
-                        addedModel.Attachments.Attach(model, addedModel.GetTransform(), s,
-                            new SocketAttachementInfo { Guid = guid, Instance = addedModel.SelectedInstance });
-                    }
+                    break;
                 }
-                break;
+                case USkeletalMesh sk:
+                {
+                    guid = Guid.NewGuid();
+                    if (!Options.Models.ContainsKey(guid) && sk.TryConvert(out var mesh))
+                    {
+                        addedModel = new SkeletalModel(sk, mesh, t);
+                        Options.Models[guid] = addedModel;
+                    }
+                    break;
+                }
             }
-            case UAnimComposite animComposite when animComposite.Skeleton.TryLoad(out USkeleton skeleton):
+
+            if (addedModel == null)
+                throw new ArgumentException("Unknown model type");
+
+            addedModel.IsProp = true;
+            if (notifyClass.TryGetValue(out UObject skeletalMeshPropAnimation, "SkeletalMeshPropAnimation", "Animation", "AnimToPlay"))
+                Animate(skeletalMeshPropAnimation, guid);
+            if (notifyClass.TryGetValue(out FName socketName, "SocketName"))
             {
-                var animSet = skeleton.ConvertAnims(animComposite);
-                var animation = new Animation(animComposite, animSet, guid);
-                maxElapsedTime = animation.TotalElapsedTime;
-                model.Skeleton.Animate(animSet);
-                Options.AddAnimation(animation);
-                break;
+                t = Transform.Identity;
+                if (notifyClass.TryGetValue(out FVector location, "LocationOffset", "Location"))
+                    t.Position = location * Constants.SCALE_DOWN_RATIO;
+                if (notifyClass.TryGetValue(out FRotator rotation, "RotationOffset", "Rotation"))
+                    t.Rotation = rotation.Quaternion();
+                if (notifyClass.TryGetValue(out FVector scale, "Scale"))
+                    t.Scale = scale;
+
+                var s = new Socket($"ANIM_{addedModel.Name}", socketName, t, true);
+                model.Sockets.Add(s);
+                addedModel.Attachments.Attach(model, addedModel.GetTransform(), s,
+                    new SocketAttachementInfo { Guid = guid, Instance = addedModel.SelectedInstance });
             }
-            default:
-                throw new ArgumentException();
         }
 
         Options.Tracker.IsPaused = false;
-        Options.Tracker.SafeSetMaxElapsedTime(maxElapsedTime);
+        Options.Tracker.SafeSetMaxElapsedTime(animation.TotalElapsedTime);
     }
 
     public void Setup()
@@ -306,7 +308,7 @@ public class Renderer : IDisposable
             animation.TimeCalculation(Options.Tracker.ElapsedTime);
             foreach (var guid in animation.AttachedModels)
             {
-                if (Options.Models[guid] is not SkeletalModel skeletalModel) continue;
+                if (!Options.TryGetModel(guid, out var m) || m is not SkeletalModel skeletalModel) continue;
                 skeletalModel.Skeleton.UpdateAnimationMatrices(animation, AnimateWithRotationOnly);
             }
         }
@@ -342,7 +344,7 @@ public class Renderer : IDisposable
             wnd.WindowShouldClose(true, true);
     }
 
-    private void LoadStaticMesh(UStaticMesh original)
+    private void LoadStaticMesh(UStaticMesh original, ENaniteMeshFormat naniteFormat = ENaniteMeshFormat.OnlyNormalLODs)
     {
         var guid = original.LightingGuid;
         if (Options.TryGetModel(guid, out var model))
@@ -352,7 +354,7 @@ public class Renderer : IDisposable
             return;
         }
 
-        if (!original.TryConvert(out var mesh))
+        if (!original.TryConvert(out var mesh, naniteFormat))
             return;
 
         Options.Models[guid] = new StaticModel(original, mesh);
@@ -430,7 +432,7 @@ public class Renderer : IDisposable
             return;
 
         if (persistentLevel.TryGetValue(out FSoftObjectPath runtimeCell, "WorldPartitionRuntimeCell") &&
-            Utils.TryLoadObject(runtimeCell.AssetPathName.Text.SubstringBeforeWithLast(".") + runtimeCell.SubPathString.SubstringAfterLast("."), out UObject worldPartition))
+            runtimeCell.TryLoad(out UObject worldPartition))
         {
             var position = worldPartition.GetOrDefault("Position", FVector.ZeroVector) * Constants.SCALE_DOWN_RATIO;
             var box = worldPartition.GetOrDefault("ContentBounds", new FBox(FVector.ZeroVector, FVector.OneVector));
@@ -443,8 +445,7 @@ public class Renderer : IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (persistentLevel.Actors[i].Load() is not { } actor ||
-                actor.ExportType is "LODActor" or "SplineMeshActor")
+            if (persistentLevel.Actors[i].Load() is not { } actor || actor.ExportType is "LODActor")
                 continue;
 
             Services.ApplicationService.ApplicationView.Status.UpdateStatusLabel($"{original.Name} ... {i}/{length}");
@@ -535,17 +536,17 @@ public class Renderer : IDisposable
         {
             foreach (var component in instanceComponents)
             {
-                if (!component.TryLoad(out UInstancedStaticMeshComponent staticMeshComp) ||
+                if (!component.TryLoad(out UStaticMeshComponent staticMeshComp) ||
                     !staticMeshComp.GetStaticMesh().TryLoad(out UStaticMesh m) || m.Materials.Length < 1)
                     continue;
 
-                if (staticMeshComp.PerInstanceSMData is { Length: > 0 })
+                var relation = CalculateTransform(staticMeshComp, transform);
+                if (staticMeshComp is UInstancedStaticMeshComponent { PerInstanceSMData.Length: > 0 } instancedStaticMeshComp)
                 {
 
-                    var relation = CalculateTransform(staticMeshComp, transform);
-                    foreach (var perInstanceData in staticMeshComp.PerInstanceSMData)
+                    foreach (var perInstanceData in instancedStaticMeshComp.PerInstanceSMData)
                     {
-                        ProcessMesh(actor, staticMeshComp, m, new Transform
+                        ProcessMesh(actor, instancedStaticMeshComp, m, new Transform
                         {
                             Relation = relation.Matrix,
                             Position = perInstanceData.TransformData.Translation * Constants.SCALE_DOWN_RATIO,
@@ -554,7 +555,7 @@ public class Renderer : IDisposable
                         });
                     }
                 }
-                else ProcessMesh(actor, staticMeshComp, m, CalculateTransform(staticMeshComp, transform));
+                else ProcessMesh(actor, staticMeshComp, m, relation);
             }
         }
         else if (actor.TryGetValue(out FPackageIndex componentTemplate, "ComponentTemplate") &&
@@ -574,7 +575,7 @@ public class Renderer : IDisposable
                 ProcessMesh(actor, compTemplate, m, CalculateTransform(compTemplate, transform), forceShow);
             }
         }
-        else if (actor.TryGetValue(out FPackageIndex staticMeshComponent, "StaticMeshComponent", "ComponentTemplate", "StaticMesh", "Mesh", "LightMesh") &&
+        else if (actor.TryGetValue(out FPackageIndex staticMeshComponent, "StaticMeshComponent", "ComponentTemplate", "StaticMesh", "Mesh", "LightMesh", "SplineMesh") &&
                  staticMeshComponent.TryLoad(out UStaticMeshComponent staticMeshComp) &&
                  staticMeshComp.GetStaticMesh().TryLoad(out UStaticMesh m) && m.Materials.Length > 0)
         {
@@ -589,14 +590,17 @@ public class Renderer : IDisposable
     }
     private void ProcessMesh(IPropertyHolder actor, UObject staticMeshComp, UStaticMesh m, Transform transform, bool forceShow)
     {
+        var bSpline = staticMeshComp is USplineMeshComponent;
         var guid = m.LightingGuid;
         if (Options.TryGetModel(guid, out var model))
         {
             model.AddInstance(transform);
+            if (bSpline && model is SplineModel splineModel)
+                splineModel.AddComponent((USplineMeshComponent)staticMeshComp);
         }
-        else if (m.TryConvert(out var mesh))
+        else if (m.TryConvert(out var mesh, UserSettings.Default.NaniteMeshExportFormat))
         {
-            model = new StaticModel(m, mesh, transform);
+            model = bSpline ? new SplineModel(m, mesh, (USplineMeshComponent)staticMeshComp, transform) : new StaticModel(m, mesh, transform);
             model.IsTwoSided = actor.GetOrDefault("bMirrored", staticMeshComp.GetOrDefault("bDisallowMeshPaintPerInstance", model.IsTwoSided));
 
             if (actor.TryGetAllValues(out FPackageIndex[] textureData, "TextureData"))
@@ -671,6 +675,11 @@ public class Renderer : IDisposable
 
     private Transform CalculateTransform(IPropertyHolder staticMeshComp, Transform relation)
     {
+        if (staticMeshComp.TryGetValue(out FPackageIndex ap, "AttachParent") && ap.TryLoad(out UObject component))
+        {
+            relation = CalculateTransform(component, relation);
+        }
+
         return new Transform
         {
             Relation = relation.Matrix,

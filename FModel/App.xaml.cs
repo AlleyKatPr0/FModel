@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
+using CUE4Parse;
 using FModel.Framework;
 using FModel.Services;
 using FModel.Settings;
@@ -51,13 +52,20 @@ public partial class App
         if (!Directory.Exists(UserSettings.Default.OutputDirectory))
         {
             var currentDir = Directory.GetCurrentDirectory();
-            var dirInfo = new DirectoryInfo(currentDir);
-            if (dirInfo.Attributes.HasFlag(FileAttributes.Archive))
-                throw new Exception("FModel cannot be run from an archive file. Please extract it and try again.");
-            if (dirInfo.Attributes.HasFlag(FileAttributes.ReadOnly))
-                throw new Exception("FModel cannot be run from a read-only directory. Please move it to a writable location.");
+            try
+            {
+                var outputDir = Directory.CreateDirectory(Path.Combine(currentDir, "Output"));
+                using (File.Create(Path.Combine(outputDir.FullName, Path.GetRandomFileName()), 1, FileOptions.DeleteOnClose))
+                {
 
-            UserSettings.Default.OutputDirectory = Path.Combine(currentDir, "Output");
+                }
+
+                UserSettings.Default.OutputDirectory = outputDir.FullName;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                throw new Exception("FModel cannot create the output directory where it is currently located. Please move FModel.exe to a different location.", exception);
+            }
         }
 
         if (!Directory.Exists(UserSettings.Default.RawDataDirectory))
@@ -96,15 +104,20 @@ public partial class App
         Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Logs"));
         Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, ".data"));
 
+        const string template = "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Enriched}: {Message:lj}{NewLine}{Exception}";
+        Log.Logger = new LoggerConfiguration()
 #if DEBUG
-        Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).WriteTo.File(
-            Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Debug-Log-{DateTime.Now:yyyy-MM-dd}.txt"),
-            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [FModel] [{Level:u3}] {Message:lj}{NewLine}{Exception}").CreateLogger();
+            .Enrich.With<SourceEnricher>()
+            .MinimumLevel.Verbose()
+            .WriteTo.Console(outputTemplate: template, theme: AnsiConsoleTheme.Literate)
+            .WriteTo.File(outputTemplate: template,
+                path: Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Debug-Log-{DateTime.Now:yyyy-MM-dd}.log"))
 #else
-        Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).WriteTo.File(
-            Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Log-{DateTime.Now:yyyy-MM-dd}.txt"),
-            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [FModel] [{Level:u3}] {Message:lj}{NewLine}{Exception}").CreateLogger();
+            .Enrich.With<CallerEnricher>()
+            .WriteTo.File(outputTemplate: template,
+                path: Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Log-{DateTime.Now:yyyy-MM-dd}.log"))
 #endif
+            .CreateLogger();
 
         Log.Information("Version {Version} ({CommitId})", Constants.APP_VERSION, Constants.APP_COMMIT_ID);
         Log.Information("{OS}", GetOperatingSystemProductName());
@@ -126,15 +139,15 @@ public partial class App
 
         var messageBox = new MessageBoxModel
         {
-            Text = $"An unhandled exception occurred: {e.Exception.Message}",
+            Text = $"An unhandled {e.Exception.GetBaseException().GetType()} occurred: {e.Exception.Message}",
             Caption = "Fatal Error",
             Icon = MessageBoxImage.Error,
-            Buttons = new[]
-            {
+            Buttons =
+            [
                 MessageBoxButtons.Custom("Reset Settings", EErrorKind.ResetSettings),
                 MessageBoxButtons.Custom("Restart", EErrorKind.Restart),
                 MessageBoxButtons.Custom("OK", EErrorKind.Ignore)
-            },
+            ],
             IsSoundEnabled = false
         };
 
