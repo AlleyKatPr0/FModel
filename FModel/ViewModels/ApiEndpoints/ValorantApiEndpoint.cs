@@ -22,7 +22,7 @@ namespace FModel.ViewModels.ApiEndpoints;
 
 public class ValorantApiEndpoint : AbstractApiProvider
 {
-    private const string _URL = "https://fmodel.fortnite-api.com/valorant/v2/manifest";
+    private const string _URL = "https://valorant-api.com/v1/fmodel/manifest";
 
     public ValorantApiEndpoint(RestClient client) : base(client) { }
 
@@ -30,6 +30,8 @@ public class ValorantApiEndpoint : AbstractApiProvider
     {
         var request = new FRestRequest(_URL);
         var response = await _client.ExecuteAsync(request, token).ConfigureAwait(false);
+        if (!response.IsSuccessful)
+            return null;
         return new VManifest(response.RawBytes);
     }
 
@@ -116,8 +118,6 @@ public class VManifest
 
         return chunkBytes;
     }
-
-    public VPakStream GetPakStream(int index) => new VPakStream(this, index);
 }
 
 public readonly struct VHeader
@@ -168,6 +168,7 @@ public readonly struct VPak
     }
 
     public string GetFullName() => $"ValorantLive/ShooterGame/Content/Paks/{Name}";
+    public VPakStream GetStream(VManifest manifest) => new(manifest, this);
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -176,22 +177,21 @@ public readonly struct VChunk
     public readonly ulong Id;
     public readonly uint Size;
 
-    public string GetUrl() => $"https://fmodel.fortnite-api.com/valorant/v2/chunks/{Id}";
+    public string GetUrl() => $"https://valorant-api.com/v1/fmodel/chunks/{Id}";
 }
 
-public class VPakStream : Stream, IRandomAccessStream, ICloneable
+public class VPakStream : RandomAccessStream, ICloneable
 {
     private readonly VManifest _manifest;
-    private readonly int _pakIndex;
+    private readonly VPak _pak;
     private readonly VChunk[] _chunks;
 
-    public VPakStream(VManifest manifest, int pakIndex, long position = 0L)
+    public VPakStream(VManifest manifest, in VPak pak, long position = 0L)
     {
         _manifest = manifest;
-        _pakIndex = pakIndex;
+        _pak = pak;
         _position = position;
 
-        var pak = manifest.Paks[pakIndex];
         _chunks = new VChunk[pak.ChunkIndices.Length];
         for (var i = 0; i < _chunks.Length; i++)
         {
@@ -201,12 +201,12 @@ public class VPakStream : Stream, IRandomAccessStream, ICloneable
         Length = pak.Size;
     }
 
-    public object Clone() => new VPakStream(_manifest, _pakIndex, _position);
+    public object Clone() => new VPakStream(_manifest, _pak, _position);
 
     public override int Read(byte[] buffer, int offset, int count) =>
         ReadAsync(buffer, offset, count, CancellationToken.None).GetAwaiter().GetResult();
 
-    public int ReadAt(long position, byte[] buffer, int offset, int count) =>
+    public override int ReadAt(long position, byte[] buffer, int offset, int count) =>
         ReadAtAsync(position, buffer, offset, count, CancellationToken.None).GetAwaiter().GetResult();
 
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
@@ -216,7 +216,7 @@ public class VPakStream : Stream, IRandomAccessStream, ICloneable
         return bytesRead;
     }
 
-    public async Task<int> ReadAtAsync(long position, byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    public override async Task<int> ReadAtAsync(long position, byte[] buffer, int offset, int count, CancellationToken cancellationToken = default)
     {
         var (i, startPos) = GetChunkIndex(position);
         if (i == -1) return 0;
@@ -248,11 +248,6 @@ public class VPakStream : Stream, IRandomAccessStream, ICloneable
         return bytesRead;
     }
 
-    public Task<int> ReadAtAsync(long position, Memory<byte> memory, CancellationToken cancellationToken)
-    {
-        throw new NotSupportedException();
-    }
-
     private async Task PrefetchAsync(int i, uint startPos, long count, CancellationToken cancellationToken, int concurrentDownloads = 4)
     {
         var tasks = new List<Task>();
@@ -262,7 +257,7 @@ public class VPakStream : Stream, IRandomAccessStream, ICloneable
             await s.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             var chunk = _chunks[i++];
-            tasks.Add(PrefetchChunkAsync(chunk));
+            tasks.Add(PrefetchChunkAsync(_manifest, chunk, s, cancellationToken));
 
             if (i == _chunks.Length) break;
             count -= chunk.Size - startPos;
@@ -271,11 +266,12 @@ public class VPakStream : Stream, IRandomAccessStream, ICloneable
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
         s.Dispose();
+        return;
 
-        async Task PrefetchChunkAsync(VChunk chunk)
+        static async Task PrefetchChunkAsync(VManifest manifest, VChunk chunk, SemaphoreSlim semaphore, CancellationToken cancellationToken)
         {
-            await _manifest.PrefetchChunk(chunk, cancellationToken).ConfigureAwait(false);
-            s.Release(); // This is intended
+            await manifest.PrefetchChunk(chunk, cancellationToken).ConfigureAwait(false);
+            semaphore.Release();
         }
     }
 

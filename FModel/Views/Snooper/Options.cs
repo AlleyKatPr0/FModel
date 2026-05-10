@@ -9,6 +9,7 @@ using FModel.Views.Snooper.Animations;
 using FModel.Views.Snooper.Lights;
 using FModel.Views.Snooper.Models;
 using FModel.Views.Snooper.Shading;
+using SkiaSharp;
 
 namespace FModel.Views.Snooper;
 
@@ -63,7 +64,7 @@ public class Options
             ["tl_next"] = new ("tl_next"),
         };
 
-        _game = Services.ApplicationService.ApplicationView.CUE4Parse.Provider.InternalGameName.ToUpper();
+        _game = Services.ApplicationService.ApplicationView.CUE4Parse.Provider.ProjectName.ToUpper();
 
         SelectModel(Guid.Empty);
     }
@@ -185,17 +186,26 @@ public class Options
         model.UpdateMorph(SelectedMorph);
     }
 
-    public bool TryGetTexture(UTexture2D o, bool fix, out Texture texture)
+    public bool TryGetTexture(UTexture o, bool fix, out Texture texture)
     {
         var guid = o.LightingGuid;
-        if (!Textures.TryGetValue(guid, out texture) &&
-            o.Decode(UserSettings.Default.PreviewMaxTextureSize, UserSettings.Default.CurrentDir.TexturePlatform) is { } bitmap)
+        if (Textures.TryGetValue(guid, out texture)) return texture != null;
+        if (o.Format == EPixelFormat.PF_BC6H) return false; // BC6H is not supported by Decode thus randomly crashes the app
+
+        var bitmap = o switch
         {
-            texture = new Texture(bitmap, o);
+            UTexture2D texture2D => texture2D.Decode(UserSettings.Default.PreviewMaxTextureSize, UserSettings.Default.CurrentDir.TexturePlatform),
+            UTexture2DArray texture2DArray => texture2DArray.DecodeTextureArray(UserSettings.Default.CurrentDir.TexturePlatform)?.FirstOrDefault(),
+            _ => o.Decode(UserSettings.Default.CurrentDir.TexturePlatform)
+        };
+
+        if (bitmap is not null)
+        {
+            texture = new Texture(bitmap.ToSkBitmap(), o);
             if (fix) TextureHelper.FixChannels(_game, texture);
             Textures[guid] = texture;
-            bitmap.Dispose();
         }
+
         return texture != null;
     }
 
@@ -228,6 +238,18 @@ public class Options
     public void AnimateMesh(bool value)
     {
         Services.ApplicationService.ApplicationView.CUE4Parse.ModelIsWaitingAnimation = value;
+    }
+
+    /// <summary>
+    /// Skip emissive for specific games, cause of excessive use in their materials
+    /// </summary>
+    public bool SkipEmissive()
+    {
+        return _game switch
+        {
+            "LIESOFP" or "CODEVEIN2" or "HIGHONLIFE2" => true,
+            _ => false,
+        };
     }
 
     public void ResetModelsLightsAnimations()

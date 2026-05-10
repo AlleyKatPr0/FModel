@@ -19,10 +19,15 @@ public class News
 [DebuggerDisplay("{" + nameof(FileName) + "}")]
 public class Backup
 {
-    [J] public string GameName { get; private set; }
     [J] public string FileName { get; private set; }
+    [J] public string Url { get; private set; }
+}
+
+[DebuggerDisplay("{" + nameof(AppName) + "}")]
+public class ManifestInfoDilly
+{
+    [J] public string AppName { get; private set; }
     [J] public string DownloadUrl { get; private set; }
-    [J] public long FileSize { get; private set; }
 }
 
 public class Donator

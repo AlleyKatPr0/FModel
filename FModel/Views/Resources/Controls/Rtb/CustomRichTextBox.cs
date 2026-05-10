@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace FModel.Views.Resources.Controls;
 
@@ -33,6 +34,11 @@ public class FLogger : ITextFormatter
     private static readonly BrushConverter _brushConverter = new();
     private static int _previous;
 
+    private const string _at = "   at ";
+    private const char _dot = '.';
+    private const char _colon = ':';
+    private const string _gray = "#999";
+
     public static void Append(ELog type, Action job)
     {
         Application.Current.Dispatcher.Invoke(delegate
@@ -54,6 +60,45 @@ public class FLogger : ITextFormatter
             }
 
             job();
+        }, DispatcherPriority.Background);
+    }
+
+    public static void Append(Exception e)
+    {
+        Append(ELog.Error, () =>
+        {
+            if ((e.InnerException ?? e) is { TargetSite.DeclaringType: not null } exception)
+            {
+                if (exception.TargetSite.ToString() == "CUE4Parse.FileProvider.GameFile get_Item(System.String)")
+                {
+                    Text(e.Message, Constants.WHITE, true);
+                }
+                else
+                {
+                    var t = exception.GetType();
+                    Text(t.Namespace + _dot, Constants.GRAY);
+                    Text(t.Name, Constants.WHITE);
+                    Text(_colon + " ", Constants.GRAY);
+                    Text(exception.Message, Constants.RED, true);
+
+                    Text(_at, _gray);
+                    Text(exception.TargetSite.DeclaringType.FullName + _dot, Constants.GRAY);
+                    Text(exception.TargetSite.Name, Constants.YELLOW);
+
+                    var p = exception.TargetSite.GetParameters();
+                    var parameters = new string[p.Length];
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        parameters[i] = p[i].ParameterType.Name + " " + p[i].Name;
+                    }
+
+                    Text("(" + string.Join(", ", parameters) + ")", Constants.GRAY, true);
+                }
+            }
+            else
+            {
+                Text(e.Message, Constants.WHITE, true);
+            }
         });
     }
 
@@ -81,13 +126,40 @@ public class FLogger : ITextFormatter
             {
                 NavigateUri = new Uri(url),
                 OverridesDefaultStyle = true,
-                Style = new Style(typeof(Hyperlink)) { Setters =
+                Style = new Style(typeof(Hyperlink))
                 {
-                    new Setter(FrameworkContentElement.CursorProperty, Cursors.Hand),
-                    new Setter(TextBlock.TextDecorationsProperty, TextDecorations.Underline),
-                    new Setter(TextElement.ForegroundProperty, Brushes.Cornsilk)
-                }}
-            }.Click += (sender, _) => Process.Start("explorer.exe", $"/select, \"{((Hyperlink)sender).NavigateUri.AbsoluteUri}\"");
+                    Setters =
+                    {
+                        new Setter(FrameworkContentElement.CursorProperty, Cursors.Hand),
+                        new Setter(TextElement.ForegroundProperty, Brushes.Goldenrod),
+                        new Setter(TextElement.FontWeightProperty, FontWeights.Bold)
+                    },
+                    Triggers =
+                    {
+                        new Trigger
+                        {
+                            Property = UIElement.IsMouseOverProperty,
+                            Value = true,
+                            Setters =
+                            {
+                                new Setter(TextElement.ForegroundProperty, Brushes.Gold),
+                                new Setter(TextBlock.TextDecorationsProperty, TextDecorations.Underline)
+                            }
+                        }
+                    }
+                }
+            }.Click += (sender, _) =>
+            {
+                var uri = ((Hyperlink) sender).NavigateUri;
+                if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                {
+                    Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+                }
+                else
+                {
+                    Process.Start("explorer.exe", $"/select, \"{uri.AbsoluteUri}\"");
+                }
+            };
         }
         finally
         {
@@ -109,6 +181,12 @@ public class FLogger : ITextFormatter
     public void SetText(FlowDocument document, string text)
     {
         new TextRange(document.ContentStart, document.ContentEnd).Text = text;
+    }
+
+    public static void ClearLogs()
+    {
+        Logger.Document.Blocks.Clear();
+        _previous = 0;
     }
 }
 

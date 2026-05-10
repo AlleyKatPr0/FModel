@@ -1,6 +1,12 @@
+using System;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using CUE4Parse.UE4.Lua.unluac;
 using FModel.Services;
 using FModel.Settings;
 using FModel.ViewModels;
@@ -55,6 +61,9 @@ public partial class SettingsView
         }
 
         _applicationView.CUE4Parse.Provider.ReadScriptData = UserSettings.Default.ReadScriptData;
+        _applicationView.CUE4Parse.Provider.ReadShaderMaps = UserSettings.Default.ReadShaderMaps;
+
+        UserSettings.Save();
     }
 
     private void OnBrowseOutput(object sender, RoutedEventArgs e)
@@ -68,6 +77,7 @@ public partial class SettingsView
         UserSettings.Default.PropertiesDirectory = path;
         UserSettings.Default.TextureDirectory = path;
         UserSettings.Default.AudioDirectory = path;
+        UserSettings.Default.CodeDirectory = path;
     }
 
     private void OnBrowseDirectories(object sender, RoutedEventArgs e)
@@ -149,7 +159,11 @@ public partial class SettingsView
     private void OpenCustomVersions(object sender, RoutedEventArgs e)
     {
         var editor = new DictionaryEditor(_applicationView.SettingsView.SelectedCustomVersions, "Versioning Configuration (Custom Versions)");
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Configuring);
         var result = editor.ShowDialog();
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Ready);
         if (!result.HasValue || !result.Value)
             return;
 
@@ -159,7 +173,11 @@ public partial class SettingsView
     private void OpenOptions(object sender, RoutedEventArgs e)
     {
         var editor = new DictionaryEditor(_applicationView.SettingsView.SelectedOptions, "Versioning Configuration (Options)");
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Configuring);
         var result = editor.ShowDialog();
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Ready);
         if (!result.HasValue || !result.Value)
             return;
 
@@ -169,7 +187,11 @@ public partial class SettingsView
     private void OpenMapStructTypes(object sender, RoutedEventArgs e)
     {
         var editor = new DictionaryEditor(_applicationView.SettingsView.SelectedMapStructTypes, "Versioning Configuration (MapStructTypes)");
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Configuring);
         var result = editor.ShowDialog();
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Ready);
         if (!result.HasValue || !result.Value)
             return;
 
@@ -180,13 +202,94 @@ public partial class SettingsView
     {
         var editor = new EndpointEditor(
             _applicationView.SettingsView.AesEndpoint, "Endpoint Configuration (AES)", EEndpointType.Aes);
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Configuring);
         editor.ShowDialog();
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Ready);
     }
 
     private void OpenMappingEndpoint(object sender, RoutedEventArgs e)
     {
         var editor = new EndpointEditor(
             _applicationView.SettingsView.MappingEndpoint, "Endpoint Configuration (Mapping)", EEndpointType.Mapping);
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Configuring);
         editor.ShowDialog();
+        if (_applicationView.Status.IsReady)
+            _applicationView.Status.SetStatus(EStatusKind.Ready);
+    }
+
+    private void CriwareKeyBox_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox textBox)
+            return;
+
+        textBox.Text = _applicationView.SettingsView.CriwareDecryptionKey.ToString();
+    }
+
+    private void CriwareKeyBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is not TextBox textBox)
+            return;
+
+        string input = textBox.Text?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrEmpty(input))
+            return;
+
+        if (TryParseKey(input, out ulong parsed))
+            _applicationView.SettingsView.CriwareDecryptionKey = parsed;
+    }
+
+    private static bool TryParseKey(string text, out ulong value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        bool isHex = false;
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            isHex = true;
+            text = text[2..];
+        }
+        else if (text.Any(char.IsLetter))
+        {
+            isHex = true;
+        }
+
+        int numberBase = text.All(Uri.IsHexDigit) ? 16 : 10;
+        return ulong.TryParse(
+            text,
+            isHex ? NumberStyles.HexNumber : NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out value
+        );
+    }
+
+    private void OnHyperlinkClick(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is not Hyperlink hyperlink)
+            return;
+
+        Process.Start(new ProcessStartInfo(hyperlink.NavigateUri.AbsoluteUri) { UseShellExecute = true });
+    }
+
+    private async void OnDecompileLuaChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { IsChecked: true } && UnluacHelper.Instance is null)
+            await ApplicationViewModel.InitUnluac();
+    }
+
+    private void OnUnluacFlagChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox cb || cb.Tag is not string name) return;
+        if (!Enum.TryParse<EUnluacFlags>(name, true, out var flag)) return;
+
+        var current = UserSettings.Default.UnluacFlags;
+        var isChecked = cb.IsChecked == true;
+
+        UserSettings.Default.UnluacFlags = isChecked ? (current | flag) : (current & ~flag);
     }
 }

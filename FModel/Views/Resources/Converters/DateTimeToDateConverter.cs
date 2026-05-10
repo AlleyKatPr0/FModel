@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.Windows.Data;
 
@@ -12,7 +12,7 @@ public class DateTimeToDateConverter : IValueConverter
     {
         if (value is DateTime dateTime)
         {
-            return DateOnly.FromDateTime(dateTime);
+            return DateOnly.FromDateTime(dateTime.ToLocalTime());
         }
         return value;
     }

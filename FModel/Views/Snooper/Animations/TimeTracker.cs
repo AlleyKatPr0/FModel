@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using FModel.Views.Snooper.Shading;
@@ -20,7 +20,7 @@ public class TimeTracker : IDisposable
     public bool IsActive;
     public float ElapsedTime;
     public float MaxElapsedTime;
-    public int TimeMultiplier;
+    public float TimeMultiplier;
 
     public TimeTracker()
     {
@@ -51,7 +51,7 @@ public class TimeTracker : IDisposable
         if (doMet)
         {
             MaxElapsedTime = 0.01f;
-            TimeMultiplier = 1;
+            TimeMultiplier = 1f;
         }
     }
 

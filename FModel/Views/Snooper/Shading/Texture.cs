@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Windows;
+using CUE4Parse_Conversion.Textures;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Core.Misc;
@@ -79,28 +80,27 @@ public class Texture : IDisposable
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, _target, _handle, 0);
     }
 
-    public Texture(SKBitmap bitmap, UTexture2D texture2D) : this(TextureType.Normal)
+    public Texture(SKBitmap bitmap, UTexture texture2D) : this(TextureType.Normal)
     {
         Type = texture2D.ExportType;
         Guid = texture2D.LightingGuid;
         Name = texture2D.Name;
         Path = texture2D.GetPathName();
         Format = texture2D.Format;
-        ImportedWidth = texture2D.ImportedSize.X;
-        ImportedHeight = texture2D.ImportedSize.Y;
         Width = bitmap.Width;
         Height = bitmap.Height;
         Bind(TextureUnit.Texture0);
 
-        var internalFormat = Format switch
+        var internalFormat = bitmap.ColorType switch
         {
-            EPixelFormat.PF_G8 => PixelInternalFormat.R8,
+            SKColorType.Gray8 => PixelInternalFormat.R8,
             _ => texture2D.SRGB ? PixelInternalFormat.Srgb : PixelInternalFormat.Rgb
         };
 
-        var pixelFormat = Format switch
+        var pixelFormat = bitmap.ColorType switch
         {
-            EPixelFormat.PF_G8 => PixelFormat.Red,
+            SKColorType.Gray8 => PixelFormat.Red,
+            SKColorType.Bgra8888 => PixelFormat.Bgra,
             _ => PixelFormat.Rgba
         };
 
@@ -111,6 +111,7 @@ public class Texture : IDisposable
         GL.TexParameter(_target, TextureParameterName.TextureMaxLevel, 8);
 
         GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
+        bitmap.Dispose();
     }
 
     public Texture(FLinearColor color) : this(TextureType.Normal)
@@ -237,8 +238,8 @@ public class Texture : IDisposable
                 SnimGui.Layout("Type");ImGui.Text($" :  ({Format}) {Name}");
                 SnimGui.TooltipCopy("(?) Click to Copy Path", Path);
                 SnimGui.Layout("Guid");ImGui.Text($" :  {Guid.ToString(EGuidFormats.UniqueObjectGuid)}");
-                SnimGui.Layout("Import");ImGui.Text($" :  {ImportedWidth}x{ImportedHeight}");
-                SnimGui.Layout("Export");ImGui.Text($" :  {Width}x{Height}");
+                SnimGui.Layout("Size");
+                ImGui.Text($" :  {Width}x{Height}");
 
                 SnimGui.Layout("Swizzle");
                 for (int c = 0; c < SwizzleMask.Length; c++)

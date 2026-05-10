@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Text.RegularExpressions;
 using System.Windows.Input;
 using System.Windows.Media;
-using FModel.Extensions;
+using CUE4Parse.Utils;
 using FModel.ViewModels;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Document;
@@ -24,7 +24,7 @@ public partial class PropertiesPopout
         MyAvalonEditor.Document = new TextDocument
         {
             Text = contextViewModel.Document.Text,
-            FileName = contextViewModel.Directory + '/' + contextViewModel.Header.SubstringBeforeLast('.')
+            FileName = contextViewModel.Entry.PathWithoutExtension
         };
         MyAvalonEditor.FontSize = contextViewModel.FontSize;
         MyAvalonEditor.SyntaxHighlighting = contextViewModel.Highlighter;
@@ -32,6 +32,7 @@ public partial class PropertiesPopout
         MyAvalonEditor.TextArea.TextView.LinkTextBackgroundBrush = null;
         MyAvalonEditor.TextArea.TextView.LinkTextForegroundBrush = Brushes.Cornsilk;
         MyAvalonEditor.TextArea.TextView.ElementGenerators.Add(new GamePathElementGenerator());
+        MyAvalonEditor.TextArea.TextView.ElementGenerators.Add(new JumpElementGenerator());
         MyAvalonEditor.TextArea.TextView.ElementGenerators.Add(new HexColorElementGenerator());
         _manager = new JsonFoldingStrategies(MyAvalonEditor);
         _manager.UpdateFoldings(MyAvalonEditor.Document);

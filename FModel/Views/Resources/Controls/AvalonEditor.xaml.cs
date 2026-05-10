@@ -27,7 +27,7 @@ public partial class AvalonEditor
     private readonly Dictionary<string, NavigationList<int>> _savedCarets = new();
     private NavigationList<int> _caretsOffsets
     {
-        get => MyAvalonEditor.Document != null
+        get => MyAvalonEditor.Document != null && MyAvalonEditor.Document.FileName != null
             ? _savedCarets.GetOrAdd(MyAvalonEditor.Document.FileName, () => new NavigationList<int>())
             : new NavigationList<int>();
     }
@@ -43,6 +43,7 @@ public partial class AvalonEditor
         MyAvalonEditor.TextArea.TextView.LinkTextBackgroundBrush = null;
         MyAvalonEditor.TextArea.TextView.LinkTextForegroundBrush = Brushes.Cornsilk;
         MyAvalonEditor.TextArea.TextView.ElementGenerators.Add(new GamePathElementGenerator());
+        MyAvalonEditor.TextArea.TextView.ElementGenerators.Add(new JumpElementGenerator());
         MyAvalonEditor.TextArea.TextView.ElementGenerators.Add(new HexColorElementGenerator());
 
         ApplicationService.ApplicationView.CUE4Parse.TabControl.OnTabRemove += OnTabClose;
@@ -119,7 +120,7 @@ public partial class AvalonEditor
         if (sender is not TextEditor avalonEditor || DataContext is not TabItem tabItem ||
             avalonEditor.Document == null || string.IsNullOrEmpty(avalonEditor.Document.Text))
             return;
-        avalonEditor.Document.FileName = tabItem.Directory + '/' + StringExtensions.SubstringBeforeLast(tabItem.Header, '.');
+        avalonEditor.Document.FileName = tabItem.Entry.PathWithoutExtension;
 
         if (!_savedCarets.ContainsKey(avalonEditor.Document.FileName))
             _ignoreCaret = true;
@@ -127,6 +128,8 @@ public partial class AvalonEditor
         if (!tabItem.ShouldScroll) return;
 
         var lineNumber = avalonEditor.Document.Text.GetNameLineNumber(tabItem.ScrollTrigger);
+        if (lineNumber == -1) lineNumber = 1;
+
         var line = avalonEditor.Document.GetLineByNumber(lineNumber);
         avalonEditor.Select(line.Offset, line.Length);
         avalonEditor.ScrollToLine(lineNumber);

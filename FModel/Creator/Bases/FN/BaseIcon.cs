@@ -36,6 +36,7 @@ public class BaseIcon : UCreator
 
         if (Object.TryGetValue(out FInstancedStruct[] dataList, "DataList"))
         {
+            GetRarity(dataList);
             GetSeries(dataList);
             Preview = Utils.GetBitmap(dataList);
         }
@@ -62,7 +63,7 @@ public class BaseIcon : UCreator
         // text
         if (Object.TryGetValue(out FText displayName, "DisplayName", "ItemName", "BundleName", "DefaultHeaderText", "UIDisplayName", "EntryName", "EventCalloutTitle"))
             DisplayName = displayName.Text;
-        if (Object.TryGetValue(out FText description, "Description", "ItemDescription", "BundleDescription", "GeneralDescription", "DefaultBodyText", "UIDescription", "UIDisplayDescription", "EntryDescription", "EventCalloutDescription"))
+        if (Object.TryGetValue(out FText description, "Description", "ItemDescription", "SetDescription", "BundleDescription", "GeneralDescription", "DefaultBodyText", "UIDescription", "UIDisplayDescription", "EntryDescription", "EventCalloutDescription"))
             Description = description.Text;
         else if (Object.TryGetValue(out FText[] descriptions, "Description"))
             Description = string.Join('\n', descriptions.Select(x => x.Text));
@@ -88,6 +89,8 @@ public class BaseIcon : UCreator
     {
         ParseForReward(UserSettings.Default.CosmeticDisplayAsset);
 
+        if (Object.TryGetValue(out FInstancedStruct[] dataList, "DataList"))
+            CheckGameplayTags(dataList);
         if (Object.TryGetValue(out FGameplayTagContainer gameplayTags, "GameplayTags"))
             CheckGameplayTags(gameplayTags);
         if (Object.TryGetValue(out FPackageIndex cosmeticItem, "cosmetic_item"))
@@ -137,6 +140,12 @@ public class BaseIcon : UCreator
         GetSeries(export);
     }
 
+    private void GetRarity(FInstancedStruct[] s)
+    {
+        if (s.FirstOrDefault(d => d.NonConstStruct?.TryGetValue(out EFortRarity _, "Rarity") == true) is { } dl)
+            GetRarity(dl.NonConstStruct.Get<EFortRarity>("Rarity"));
+    }
+
     private void GetSeries(FInstancedStruct[] s)
     {
         if (s.FirstOrDefault(d => d.NonConstStruct?.TryGetValue(out FPackageIndex _, "Series") == true) is { } dl)
@@ -157,7 +166,7 @@ public class BaseIcon : UCreator
     {
         if (uObject is UTexture2D texture2D)
         {
-            SeriesBackground = texture2D.Decode();
+            SeriesBackground = texture2D.Decode().ToSkBitmap();
             return;
         }
 
@@ -215,46 +224,31 @@ public class BaseIcon : UCreator
         if (uObject.TryGetValue(out FText displayName, "DisplayName"))
             name = displayName.Text;
 
-        var format = Utils.GetLocalizedResource("Fort.Cosmetics", "CosmeticItemDescription_SetMembership_NotRich", "\nPart of the {0} set.");
-        return string.Format(format, name);
+        var format = Utils.GetLocalizedResource("Fort.Cosmetics", "CosmeticItemDescription_SetMembership", "\nPart of the <SetName>{0}</> set.");
+        return Utils.RemoveHtmlTags(string.Format(format, name));
     }
 
-    protected (int, int) GetInternalSID(int number)
+    protected (string, string, bool) GetInternalSID(string number)
     {
-        static int GetSeasonsInChapter(int chapter) => chapter switch
-        {
-            1 => 10,
-            2 => 8,
-            3 => 4,
-            4 => 5,
-            _ => 10
-        };
+        if (!Utils.TryLoadObject("FortniteGame/Plugins/GameFeatures/BattlePassBase/Content/DataTables/Athena_SeasonTitles.Athena_SeasonTitles", out UDataTable seasonTitles) ||
+            !seasonTitles.TryGetDataTableRow(number, StringComparison.InvariantCulture, out var row) ||
+            !row.TryGetValue(out FText chapterText, "DisplayChapterText") ||
+            !row.TryGetValue(out FText seasonText, "DisplaySeasonText") ||
+            !row.TryGetValue(out FName displayType, "DisplayType"))
+            return (string.Empty, string.Empty, true);
 
-        var chapterIdx = 0;
-        var seasonIdx = 0;
-        while (number > 0)
-        {
-            var seasonsInChapter = GetSeasonsInChapter(++chapterIdx);
-            if (number > seasonsInChapter)
-                number -= seasonsInChapter;
-            else
-            {
-                seasonIdx = number;
-                number = 0;
-            }
-        }
-        return (chapterIdx, seasonIdx);
+        var onlySeason = displayType.Text.EndsWith("::OnlySeason") || (chapterText.Text == seasonText.Text && !int.TryParse(seasonText.Text, out _));
+        return (chapterText.Text, seasonText.Text, onlySeason);
     }
 
     protected string GetCosmeticSeason(string seasonNumber)
     {
         var s = seasonNumber["Cosmetics.Filter.Season.".Length..];
-        var initial = int.Parse(s);
-        (int chapterIdx, int seasonIdx) = GetInternalSID(initial);
+        (string chapterIdx, string seasonIdx, bool onlySeason) = GetInternalSID(s);
 
         var season = Utils.GetLocalizedResource("AthenaSeasonItemDefinitionInternal", "SeasonTextFormat", "Season {0}");
         var introduced = Utils.GetLocalizedResource("Fort.Cosmetics", "CosmeticItemDescription_Season", "\nIntroduced in <SeasonText>{0}</>.");
-        if (initial <= 10) return Utils.RemoveHtmlTags(string.Format(introduced, string.Format(season, s)));
+        if (onlySeason) return Utils.RemoveHtmlTags(string.Format(introduced, string.Format(season, seasonIdx)));
 
         var chapter = Utils.GetLocalizedResource("AthenaSeasonItemDefinitionInternal", "ChapterTextFormat", "Chapter {0}");
         var chapterFormat = Utils.GetLocalizedResource("AthenaSeasonItemDefinitionInternal", "ChapterSeasonTextFormat", "{0}, {1}");
@@ -262,7 +256,15 @@ public class BaseIcon : UCreator
         return Utils.RemoveHtmlTags(string.Format(introduced, d));
     }
 
-    private void CheckGameplayTags(FGameplayTagContainer gameplayTags)
+    protected void CheckGameplayTags(FInstancedStruct[] dataList)
+    {
+        if (dataList.FirstOrDefault(d => d.NonConstStruct?.TryGetValue(out FGameplayTagContainer _, "Tags") ?? false) is { NonConstStruct: not null } tags)
+        {
+            CheckGameplayTags(tags.NonConstStruct.Get<FGameplayTagContainer>("Tags"));
+        }
+    }
+
+    protected virtual void CheckGameplayTags(FGameplayTagContainer gameplayTags)
     {
         if (gameplayTags.TryGetGameplayTag("Cosmetics.Source.", out var source))
             CosmeticSource = source.Text["Cosmetics.Source.".Length..];

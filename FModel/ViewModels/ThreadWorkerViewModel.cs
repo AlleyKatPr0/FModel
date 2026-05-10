@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using CUE4Parse.UE4.Exceptions;
 using FModel.Framework;
 using FModel.Services;
 using FModel.Views.Resources.Controls;
@@ -40,10 +41,6 @@ public class ThreadWorkerViewModel : ViewModel
 
     private ApplicationViewModel _applicationView => ApplicationService.ApplicationView;
     private readonly AsyncQueue<Action<CancellationToken>> _jobs;
-    private const string _at = "   at ";
-    private const char _dot = '.';
-    private const char _colon = ':';
-    private const string _gray = "#999";
 
     public ThreadWorkerViewModel()
     {
@@ -104,37 +101,26 @@ public class ThreadWorkerViewModel : ViewModel
                     CurrentCancellationTokenSource = null; // kill token
 
                     Log.Error("{Exception}", e);
-
-                    FLogger.Append(ELog.Error, () =>
+                    switch (e)
                     {
-                        if ((e.InnerException ?? e) is { TargetSite.DeclaringType: not null } exception)
-                        {
-                            if (exception.TargetSite.ToString() == "CUE4Parse.FileProvider.GameFile get_Item(System.String)")
+                        case MappingException:
+                            FLogger.Append(ELog.Error, () =>
                             {
-                                FLogger.Text(e.Message, Constants.WHITE, true);
-                            }
-                            else
+                                FLogger.Text("Package has unversioned properties but mapping file (.usmap) is missing, can't serialize. See: ", Constants.WHITE);
+                                FLogger.Link("→ link ←", Constants.MAPPING_ISSUE_LINK, true);
+                            });
+                            break;
+                        case VersionException v: // Error might be unrelated to version, but it's usually the case
+                            FLogger.Append(ELog.Error, () =>
                             {
-                                var t = exception.GetType();
-                                FLogger.Text(t.Namespace + _dot, Constants.GRAY);
-                                FLogger.Text(t.Name, Constants.WHITE);
-                                FLogger.Text(_colon + " ", Constants.GRAY);
-                                FLogger.Text(exception.Message, Constants.RED, true);
-
-                                FLogger.Text(_at, _gray);
-                                FLogger.Text(exception.TargetSite.DeclaringType.FullName + _dot, Constants.GRAY);
-                                FLogger.Text(exception.TargetSite.Name, Constants.YELLOW);
-
-                                var p = exception.TargetSite.GetParameters();
-                                var parameters = new string[p.Length];
-                                for (int i = 0; i < parameters.Length; i++)
-                                {
-                                    parameters[i] = p[i].ParameterType.Name + " " + p[i].Name;
-                                }
-                                FLogger.Text("(" + string.Join(", ", parameters) + ")", Constants.GRAY, true);
-                            }
-                        }
-                    });
+                                FLogger.Text(v.Message[..^1] + ", can't serialize. Make sure the correct UE version is configured. See: ", Constants.WHITE);
+                                FLogger.Link("→ link ←", Constants.VERSION_ISSUE_LINK, true);
+                            });
+                            break;
+                        default:
+                            FLogger.Append(e);
+                            break;
+                    }
                     return;
                 }
             }

@@ -29,9 +29,10 @@ public class MenuCommand : ViewModelCommand<ApplicationViewModel>
                 Helper.OpenWindow<AdonisWindow>("AES Manager", () => new AesManager().Show());
                 break;
             case "Directory_Backup":
-                Helper.OpenWindow<AdonisWindow>("Backup Manager", () => new BackupManager(contextViewModel.CUE4Parse.Provider.InternalGameName).Show());
+                Helper.OpenWindow<AdonisWindow>("Backup Manager", () => new BackupManager(contextViewModel.CUE4Parse.Provider.ProjectName).Show());
                 break;
             case "Directory_ArchivesInfo":
+                ApplicationService.ApplicationView.IsAssetsExplorerVisible = false;
                 contextViewModel.CUE4Parse.TabControl.AddTab("Archives Info");
                 contextViewModel.CUE4Parse.TabControl.SelectedTab.Highlighter = AvalonExtensions.HighlighterSelector("json");
                 contextViewModel.CUE4Parse.TabControl.SelectedTab.SetDocumentText(JsonConvert.SerializeObject(contextViewModel.CUE4Parse.GameDirectory.DirectoryFiles, Formatting.Indented), false, false);
@@ -64,7 +65,7 @@ public class MenuCommand : ViewModelCommand<ApplicationViewModel>
                 Process.Start(new ProcessStartInfo { FileName = Constants.DISCORD_LINK, UseShellExecute = true });
                 break;
             case "ToolBox_Clear_Logs":
-                FLogger.Logger.Text = string.Empty;
+                FLogger.ClearLogs();
                 break;
             case "ToolBox_Open_Output_Directory":
                 Process.Start(new ProcessStartInfo { FileName = UserSettings.Default.OutputDirectory, UseShellExecute = true });
