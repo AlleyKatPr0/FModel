@@ -52,6 +52,13 @@ public class BufferObject<TDataType> : IDisposable where TDataType : unmanaged
         Unbind();
     }
 
+    public void Update(TDataType[] data, int count)
+    {
+        Bind();
+        GL.BufferSubData(_bufferTarget, IntPtr.Zero, count * _sizeOf, data);
+        Unbind();
+    }
+
     public TDataType Get(int offset)
     {
         TDataType data = default;

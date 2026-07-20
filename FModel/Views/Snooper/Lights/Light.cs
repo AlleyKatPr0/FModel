@@ -112,11 +112,23 @@ public abstract class Light : IDisposable
         GL.Enable(EnableCap.CullFace);
     }
 
+    private int _cachedUniformIndex = -1;
+    private string _uBaseColor;
+    private string _uBasePosition;
+    private string _uBaseIntensity;
+
     public virtual void Render(int i, Shader shader)
     {
-        shader.SetUniform($"uLights[{i}].Base.Color", Color);
-        shader.SetUniform($"uLights[{i}].Base.Position", Transform.Matrix.Translation);
-        shader.SetUniform($"uLights[{i}].Base.Intensity", Intensity);
+        if (_cachedUniformIndex != i)
+        {
+            _cachedUniformIndex = i;
+            _uBaseColor = $"uLights[{i}].Base.Color";
+            _uBasePosition = $"uLights[{i}].Base.Position";
+            _uBaseIntensity = $"uLights[{i}].Base.Intensity";
+        }
+        shader.SetUniform(_uBaseColor, Color);
+        shader.SetUniform(_uBasePosition, Transform.Matrix.Translation);
+        shader.SetUniform(_uBaseIntensity, Intensity);
     }
 
     public virtual void ImGuiLight()

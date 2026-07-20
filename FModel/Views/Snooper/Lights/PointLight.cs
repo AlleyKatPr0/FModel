@@ -31,13 +31,25 @@ public class PointLight : Light
         Quadratic = 75.0f / MathF.Pow(radius, 2.0f);
     }
 
+    private int _cachedIndex = -1;
+    private string _uLinear;
+    private string _uQuadratic;
+    private string _uType;
+
     public override void Render(int i, Shader shader)
     {
         base.Render(i, shader);
-        shader.SetUniform($"uLights[{i}].Linear", Linear);
-        shader.SetUniform($"uLights[{i}].Quadratic", Quadratic);
+        if (_cachedIndex != i)
+        {
+            _cachedIndex = i;
+            _uLinear = $"uLights[{i}].Linear";
+            _uQuadratic = $"uLights[{i}].Quadratic";
+            _uType = $"uLights[{i}].Type";
+        }
+        shader.SetUniform(_uLinear, Linear);
+        shader.SetUniform(_uQuadratic, Quadratic);
 
-        shader.SetUniform($"uLights[{i}].Type", 0);
+        shader.SetUniform(_uType, 0);
     }
 
     public override void ImGuiLight()

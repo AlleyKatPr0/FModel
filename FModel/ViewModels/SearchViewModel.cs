@@ -19,6 +19,9 @@ public class SearchViewModel : ViewModel
         Descending
     }
 
+    private string[] _cachedFilterTokens = Array.Empty<string>();
+    private Regex _cachedFilterRegex;
+
     private string _filterText = string.Empty;
     public string FilterText
     {
@@ -69,13 +72,30 @@ public class SearchViewModel : ViewModel
         SearchResults = [];
         SearchResultsView = new ListCollectionView(SearchResults)
         {
-            Filter = e => ItemFilter(e, FilterText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)),
+            Filter = ItemFilter,
         };
         ResultsCount = SearchResultsView.Count;
     }
 
     public void RefreshFilter()
     {
+        _cachedFilterTokens = FilterText.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (HasRegexEnabled)
+        {
+            try
+            {
+                var o = HasMatchCaseEnabled ? RegexOptions.None : RegexOptions.IgnoreCase;
+                _cachedFilterRegex = new Regex(FilterText, o);
+            }
+            catch (ArgumentException)
+            {
+                _cachedFilterRegex = null;
+            }
+        }
+        else
+        {
+            _cachedFilterRegex = null;
+        }
         SearchResultsView.Refresh();
         ResultsCount = SearchResultsView.Count;
     }
@@ -130,16 +150,14 @@ public class SearchViewModel : ViewModel
         SearchResults.AddRange(sorted);
     }
 
-    private bool ItemFilter(object item, IEnumerable<string> filters)
+    private bool ItemFilter(object item)
     {
         if (item is not GameFile entry)
             return true;
 
         if (!HasRegexEnabled)
-            return filters.All(x => entry.Path.Contains(x, HasMatchCaseEnabled ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase));
+            return _cachedFilterTokens.All(x => entry.Path.Contains(x, HasMatchCaseEnabled ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase));
 
-        var o = RegexOptions.None;
-        if (!HasMatchCaseEnabled) o |= RegexOptions.IgnoreCase;
-        return new Regex(FilterText, o).Match(entry.Path).Success;
+        return _cachedFilterRegex?.IsMatch(entry.Path) ?? true;
     }
 }

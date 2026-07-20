@@ -35,14 +35,28 @@ public class SpotLight : Light
             InnerConeAngle = OuterConeAngle - 10;
     }
 
+    private int _cachedIndex = -1;
+    private string _uAttenuation;
+    private string _uInnerConeAngle;
+    private string _uOuterConeAngle;
+    private string _uType;
+
     public override void Render(int i, Shader shader)
     {
         base.Render(i, shader);
-        shader.SetUniform($"uLights[{i}].Attenuation", Attenuation);
-        shader.SetUniform($"uLights[{i}].InnerConeAngle", InnerConeAngle);
-        shader.SetUniform($"uLights[{i}].OuterConeAngle", OuterConeAngle);
+        if (_cachedIndex != i)
+        {
+            _cachedIndex = i;
+            _uAttenuation = $"uLights[{i}].Attenuation";
+            _uInnerConeAngle = $"uLights[{i}].InnerConeAngle";
+            _uOuterConeAngle = $"uLights[{i}].OuterConeAngle";
+            _uType = $"uLights[{i}].Type";
+        }
+        shader.SetUniform(_uAttenuation, Attenuation);
+        shader.SetUniform(_uInnerConeAngle, InnerConeAngle);
+        shader.SetUniform(_uOuterConeAngle, OuterConeAngle);
 
-        shader.SetUniform($"uLights[{i}].Type", 1);
+        shader.SetUniform(_uType, 1);
     }
 
     public override void ImGuiLight()

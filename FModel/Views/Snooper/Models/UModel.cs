@@ -48,6 +48,8 @@ public abstract class UModel : IRenderableModel
     public BufferObject<Matrix4x4> MatrixVbo { get; set; }
     public VertexArrayObject<float, uint> Vao { get; set; }
 
+    private Matrix4x4[] _matrixBuffer;
+
     public string Path { get; }
     public string Name { get; }
     public string Type { get; protected set; }
@@ -273,21 +275,20 @@ public abstract class UModel : IRenderableModel
 
         Vao.Bind();
         GL.PolygonMode(TriangleFace.FrontAndBack, ShowWireframe ? PolygonMode.Line : PolygonMode.Fill);
+
+        if (!outline && checker != null)
+        {
+            shader.SetUniform("uParameters.Diffuse[0].Sampler", 0);
+            checker.Bind(TextureUnit.Texture0);
+        }
+
         foreach (var section in Sections)
         {
             if (!section.Show) continue;
-            if (!outline)
+            if (!outline && checker == null)
             {
-                if (checker != null)
-                {
-                    shader.SetUniform("uParameters.Diffuse[0].Sampler", 0);
-                    checker.Bind(TextureUnit.Texture0);
-                }
-                else
-                {
-                    shader.SetUniform("uSectionColor", section.Color);
-                    Materials[section.MaterialIndex].Render(shader);
-                }
+                shader.SetUniform("uSectionColor", section.Color);
+                Materials[section.MaterialIndex].Render(shader);
             }
 
             GL.DrawElementsInstanced(PrimitiveType.Triangles, section.FacesCount, DrawElementsType.UnsignedInt, section.FirstFaceIndexPtr, TransformsCount);
@@ -334,12 +335,11 @@ public abstract class UModel : IRenderableModel
 
     public void Update(Options options)
     {
-        MatrixVbo.Bind();
+        if (_matrixBuffer == null || _matrixBuffer.Length < TransformsCount)
+            _matrixBuffer = new Matrix4x4[TransformsCount];
         for (int instance = 0; instance < TransformsCount; instance++)
-        {
-            MatrixVbo.Update(instance, Transforms[instance].Matrix);
-        }
-        MatrixVbo.Unbind();
+            _matrixBuffer[instance] = Transforms[instance].Matrix;
+        MatrixVbo.Update(_matrixBuffer, TransformsCount);
 
         var worldMatrix = GetTransform().Matrix;
         foreach (var socket in Sockets)
@@ -347,7 +347,7 @@ public abstract class UModel : IRenderableModel
             if (!socket.IsDaron) continue;
 
             var boneMatrix = Matrix4x4.Identity;
-            if (this is SkeletalModel skeletalModel && skeletalModel.Skeleton.BonesByLoweredName.TryGetValue(socket.BoneName.Text.ToLower(), out var bone))
+            if (this is SkeletalModel skeletalModel && skeletalModel.Skeleton.BonesByLoweredName.TryGetValue(socket.LoweredBoneName, out var bone))
                 boneMatrix = skeletalModel.Skeleton.GetBoneMatrix(bone);
 
             var socketRelation = boneMatrix * worldMatrix;
@@ -370,12 +370,14 @@ public abstract class UModel : IRenderableModel
 
     public void SetupInstances()
     {
-        MatrixVbo = new BufferObject<Matrix4x4>(TransformsCount, BufferTarget.ArrayBuffer);
+        _matrixBuffer = new Matrix4x4[TransformsCount];
         for (int instance = 0; instance < TransformsCount; instance++)
         {
             Transforms[instance].Save();
-            MatrixVbo.Update(instance, Transforms[instance].Matrix);
+            _matrixBuffer[instance] = Transforms[instance].Matrix;
         }
+        MatrixVbo = new BufferObject<Matrix4x4>(TransformsCount, BufferTarget.ArrayBuffer);
+        MatrixVbo.Update(_matrixBuffer, TransformsCount);
         Vao.BindInstancing(); // VertexAttributePointer
     }
 
@@ -385,7 +387,7 @@ public abstract class UModel : IRenderableModel
         var socket = Sockets[index];
         var worldMatrix = GetTransform().Matrix;
         var boneMatrix = Matrix4x4.Identity;
-        if (this is SkeletalModel skeletalModel && skeletalModel.Skeleton.BonesByLoweredName.TryGetValue(socket.BoneName.Text.ToLower(), out var bone))
+        if (this is SkeletalModel skeletalModel && skeletalModel.Skeleton.BonesByLoweredName.TryGetValue(socket.LoweredBoneName, out var bone))
             boneMatrix = skeletalModel.Skeleton.GetBoneMatrix(bone);
 
         var socketRelation = boneMatrix * worldMatrix;
