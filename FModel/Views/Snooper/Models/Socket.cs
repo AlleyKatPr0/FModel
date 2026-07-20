@@ -17,6 +17,7 @@ public class Socket : IDisposable
 {
     public readonly string Name;
     public readonly FName BoneName;
+    public readonly string LoweredBoneName;
     public readonly Transform Transform;
     public readonly bool IsVirtual;
 
@@ -27,12 +28,14 @@ public class Socket : IDisposable
     {
         Transform = Transform.Identity;
         AttachedModels = new List<SocketAttachementInfo>();
+        LoweredBoneName = string.Empty;
     }
 
     public Socket(string name, FName boneName, Transform transform, bool isVirtual) : this()
     {
         Name = name;
         BoneName = boneName;
+        LoweredBoneName = boneName?.Text.ToLowerInvariant() ?? string.Empty;
         Transform = transform;
         IsVirtual = isVirtual;
     }
@@ -49,6 +52,7 @@ public class Socket : IDisposable
     {
         Name = socket.SocketName.Text;
         BoneName = socket.BoneName;
+        LoweredBoneName = socket.BoneName?.Text.ToLowerInvariant() ?? string.Empty;
         Transform.Rotation = socket.RelativeRotation.Quaternion();
         Transform.Position = socket.RelativeLocation * Constants.SCALE_DOWN_RATIO;
         Transform.Scale = socket.RelativeScale;
