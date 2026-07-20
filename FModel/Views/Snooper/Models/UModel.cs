@@ -335,6 +335,8 @@ public abstract class UModel : IRenderableModel
 
     public void Update(Options options)
     {
+        if (_matrixBuffer == null || _matrixBuffer.Length < TransformsCount)
+            _matrixBuffer = new Matrix4x4[TransformsCount];
         for (int instance = 0; instance < TransformsCount; instance++)
             _matrixBuffer[instance] = Transforms[instance].Matrix;
         MatrixVbo.Update(_matrixBuffer, TransformsCount);
