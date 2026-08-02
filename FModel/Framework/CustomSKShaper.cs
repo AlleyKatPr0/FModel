@@ -10,6 +10,11 @@ public class CustomSKShaper : SKShaper
 {
     private const int _FONT_SIZE_SCALE = 512;
     private readonly Font _font;
+    private readonly Buffer _buffer = new Buffer();
+
+    private SKPoint[] _points = [];
+    private uint[] _clusters = [];
+    private uint[] _codepoints = [];
 
     public CustomSKShaper(SKTypeface typeface) : base(typeface)
     {
@@ -43,9 +48,12 @@ public class CustomSKShaper : SKShaper
         var textSizeY = paint.TextSize / _FONT_SIZE_SCALE;
         var textSizeX = textSizeY * paint.TextScaleX;
 
-        var points = new SKPoint[len];
-        var clusters = new uint[len];
-        var codepoints = new uint[len];
+        if (len != _points.Length)
+        {
+            _points = new SKPoint[len];
+            _clusters = new uint[len];
+            _codepoints = new uint[len];
+        }
 
         for (var i = 0; i < len; i++)
         {
@@ -53,12 +61,12 @@ public class CustomSKShaper : SKShaper
             xOffset += pos[i].XAdvance * textSizeX;
             yOffset += pos[i].YAdvance * textSizeY;
 
-            codepoints[i] = info[i].Codepoint;
-            clusters[i] = info[i].Cluster;
-            points[i] = new SKPoint(xOffset + pos[i].XOffset * textSizeX, yOffset - pos[i].YOffset * textSizeY);
+            _codepoints[i] = info[i].Codepoint;
+            _clusters[i] = info[i].Cluster;
+            _points[i] = new SKPoint(xOffset + pos[i].XOffset * textSizeX, yOffset - pos[i].YOffset * textSizeY);
         }
 
-        return new Result(codepoints, clusters, points, points[^1].X);
+        return new Result(_codepoints, _clusters, _points, _points[^1].X);
     }
 
     public new Result Shape(string text, SKPaint paint) => Shape(text, 0, 0, paint);
@@ -68,23 +76,23 @@ public class CustomSKShaper : SKShaper
         if (string.IsNullOrEmpty(text))
             return new Result();
 
-        using var buffer = new Buffer();
+        _buffer.Reset();
         switch (paint.TextEncoding)
         {
             case SKTextEncoding.Utf8:
-                buffer.AddUtf8(text);
+                _buffer.AddUtf8(text);
                 break;
             case SKTextEncoding.Utf16:
-                buffer.AddUtf16(text);
+                _buffer.AddUtf16(text);
                 break;
             case SKTextEncoding.Utf32:
-                buffer.AddUtf32(text);
+                _buffer.AddUtf32(text);
                 break;
             default:
                 throw new NotSupportedException("TextEncoding of type GlyphId is not supported.");
         }
 
-        buffer.GuessSegmentProperties();
-        return Shape(buffer, xOffset, yOffset, paint);
+        _buffer.GuessSegmentProperties();
+        return Shape(_buffer, xOffset, yOffset, paint);
     }
 }

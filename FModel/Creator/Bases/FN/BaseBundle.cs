@@ -13,6 +13,7 @@ namespace FModel.Creator.Bases.FN;
 public class BaseBundle : UCreator
 {
     private IList<BaseQuest> _quests;
+    private SKBitmap _cachedBitmap;
 
     public BaseBundle(UObject uObject, EIconStyle style) : base(uObject, style)
     {
@@ -70,6 +71,9 @@ public class BaseBundle : UCreator
 
     public override SKBitmap[] Draw()
     {
+        if (_cachedBitmap is not null)
+            return [_cachedBitmap];
+
         var ret = new SKBitmap(Width, Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
         using var c = new SKCanvas(ret);
 
@@ -80,6 +84,7 @@ public class BaseBundle : UCreator
             y += quest.Height;
         }
 
-        return [ret];
+        _cachedBitmap = ret;
+        return [_cachedBitmap];
     }
 }

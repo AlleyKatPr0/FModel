@@ -30,6 +30,10 @@ public class BaseFighter : UCreator
     private readonly List<SKBitmap> _availableTaunts;
     private readonly List<SKBitmap> _skins;
 
+    private static readonly SKImageFilter _dropShadowSmall = SKImageFilter.CreateDropShadow(0, 0, 1.5f, 1.5f, SKColors.Black);
+    private static readonly SKImageFilter _dropShadowMedium = SKImageFilter.CreateDropShadow(0, 0, 2.5f, 2.5f, SKColors.Black);
+    private static readonly SKImageFilter _dropShadowLarge = SKImageFilter.CreateDropShadow(0, 0, 5, 5, SKColors.Black.WithAlpha(150));
+
     public BaseFighter(UObject uObject, EIconStyle style) : base(uObject, style)
     {
         Width = 1024;
@@ -213,12 +217,12 @@ public class BaseFighter : UCreator
         if (_recommendedPerks.Count < 1) return;
 
         ImagePaint.BlendMode = SKBlendMode.SrcOver;
-        ImagePaint.ImageFilter = SKImageFilter.CreateDropShadow(0, 0, 2.5f, 2.5f, SKColors.Black);
+        ImagePaint.ImageFilter = _dropShadowMedium;
         c.DrawBitmap(_recommendedPerks[1], new SKRect(161, y, 225, y + size), ImagePaint);
         c.DrawBitmap(_recommendedPerks[2], new SKRect(193, y + size / 2, 257, y + size * 1.5f), ImagePaint);
         c.DrawBitmap(_recommendedPerks[3], new SKRect(161, y + size, 225, y + size * 2), ImagePaint);
 
-        ImagePaint.ImageFilter = SKImageFilter.CreateDropShadow(0, 0, 5, 5, SKColors.Black.WithAlpha(150));
+        ImagePaint.ImageFilter = _dropShadowLarge;
         c.DrawBitmap(_recommendedPerks[0], new SKRect(x, y, x + size * 2, y + size * 2), ImagePaint);
     }
 
@@ -234,7 +238,7 @@ public class BaseFighter : UCreator
         if (_availableTaunts.Count < 1) return;
 
         ImagePaint.BlendMode = SKBlendMode.SrcOver;
-        ImagePaint.ImageFilter = SKImageFilter.CreateDropShadow(0, 0, 1.5f, 1.5f, SKColors.Black);
+        ImagePaint.ImageFilter = _dropShadowSmall;
 
         foreach (var taunt in _availableTaunts)
         {
@@ -255,7 +259,7 @@ public class BaseFighter : UCreator
         if (_skins.Count < 1) return;
 
         ImagePaint.BlendMode = SKBlendMode.SrcOver;
-        ImagePaint.ImageFilter = SKImageFilter.CreateDropShadow(0, 0, 1.5f, 1.5f, SKColors.Black);
+        ImagePaint.ImageFilter = _dropShadowSmall;
         foreach (var skin in _skins)
         {
             c.DrawBitmap(skin, new SKRect(x, y, x + size, y + size), ImagePaint);
