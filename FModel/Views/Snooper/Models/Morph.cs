@@ -20,43 +20,30 @@ public class Morph : IDisposable
         Name = morphTarget.Name;
         Vertices = new float[vertices.Length / vertexSize * VertexSize];
 
-        bool TryFindVertex(uint index, out FVector positionDelta, out FVector tangentDelta)
-        {
-            foreach (var vertex in morphTarget.MorphLODModels[0].Vertices)
-            {
-                if (vertex.SourceIdx == index)
-                {
-                    positionDelta = vertex.PositionDelta;
-                    tangentDelta = vertex.TangentZDelta;
-                    return true;
-                }
-            }
-            positionDelta = FVector.ZeroVector;
-            tangentDelta = FVector.ZeroVector;
-            return false;
-        }
+        var morphLookup = new Dictionary<uint, (FVector positionDelta, FVector tangentDelta)>();
+        foreach (var vertex in morphTarget.MorphLODModels[0].Vertices)
+            morphLookup[vertex.SourceIdx] = (vertex.PositionDelta, vertex.TangentZDelta);
 
         for (int i = 0; i < vertices.Length; i += vertexSize)
         {
-            var count = 0;
             var baseIndex = i / vertexSize * VertexSize;
-            if (TryFindVertex((uint) vertices[i + 0], out var positionDelta, out var tangentDelta))
+            if (morphLookup.TryGetValue((uint) vertices[i], out var delta))
             {
-                Vertices[baseIndex + count++] = vertices[i + 1] + positionDelta.X * Constants.SCALE_DOWN_RATIO;
-                Vertices[baseIndex + count++] = vertices[i + 2] + positionDelta.Z * Constants.SCALE_DOWN_RATIO;
-                Vertices[baseIndex + count++] = vertices[i + 3] + positionDelta.Y * Constants.SCALE_DOWN_RATIO;
-                Vertices[baseIndex + count++] = vertices[i + 7] + tangentDelta.X;
-                Vertices[baseIndex + count++] = vertices[i + 8] + tangentDelta.Z;
-                Vertices[baseIndex + count++] = vertices[i + 9] + tangentDelta.Y;
+                Vertices[baseIndex + 0] = vertices[i + 1] + delta.positionDelta.X * Constants.SCALE_DOWN_RATIO;
+                Vertices[baseIndex + 1] = vertices[i + 2] + delta.positionDelta.Z * Constants.SCALE_DOWN_RATIO;
+                Vertices[baseIndex + 2] = vertices[i + 3] + delta.positionDelta.Y * Constants.SCALE_DOWN_RATIO;
+                Vertices[baseIndex + 3] = vertices[i + 7] + delta.tangentDelta.X;
+                Vertices[baseIndex + 4] = vertices[i + 8] + delta.tangentDelta.Z;
+                Vertices[baseIndex + 5] = vertices[i + 9] + delta.tangentDelta.Y;
             }
             else
             {
-                Vertices[baseIndex + count++] = vertices[i + 1];
-                Vertices[baseIndex + count++] = vertices[i + 2];
-                Vertices[baseIndex + count++] = vertices[i + 3];
-                Vertices[baseIndex + count++] = vertices[i + 7];
-                Vertices[baseIndex + count++] = vertices[i + 8];
-                Vertices[baseIndex + count++] = vertices[i + 9];
+                Vertices[baseIndex + 0] = vertices[i + 1];
+                Vertices[baseIndex + 1] = vertices[i + 2];
+                Vertices[baseIndex + 2] = vertices[i + 3];
+                Vertices[baseIndex + 3] = vertices[i + 7];
+                Vertices[baseIndex + 4] = vertices[i + 8];
+                Vertices[baseIndex + 5] = vertices[i + 9];
             }
         }
     }
